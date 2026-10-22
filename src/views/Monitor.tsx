@@ -1,7 +1,6 @@
 import { useMemo, useState, useSyncExternalStore } from 'react';
 import { DateRange, FilterBar, inRange, NumberInput, SearchInput, Select, SortHeader, type Sort } from '../components/Filters';
 import { AlertTriangle, Activity, Bell, BellOff, RefreshCw, ShieldCheck } from 'lucide-react';
-import { CyclesCard } from '../components/Cycles';
 import { buildsIndex, canisterHealth, neuronState, refreshInfo, nnsNeuron, openWithdrawals, resetWithdrawals, wnInfo, type WRow } from '../lib/data';
 import { statusReport } from '../lib/report';
 import { clearLog, INTERVAL_MS, runCheck, setWatch, subscribe, watchState } from '../lib/watch';
@@ -188,8 +187,6 @@ export function Monitor() {
           </div>
         </Card>
       )}
-
-      <CyclesCard tick={tick} />
 
       <Watcher />
 

@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Activity, Droplets, FileText, Moon, Sun, Tags, Wallet } from 'lucide-react';
+import { Activity, Droplets, FileText, Fuel, Moon, Sun, Tags, Wallet } from 'lucide-react';
 import { Proposals } from './views/Proposals';
 import { ProposalDetail } from './views/ProposalDetail';
 import { Monitor } from './views/Monitor';
 import { Withdrawal } from './views/Withdrawal';
 import { Labels } from './views/Labels';
+import { Cycles } from './views/Cycles';
 import { startWatcher } from './lib/watch';
 import { cx } from './components/ui';
 import { REPO } from './lib/ic';
@@ -26,6 +27,7 @@ const useHash = () => {
 const TABS = [
   ['#/', 'Proposals', FileText],
   ['#/monitor', 'Monitor', Activity],
+  ['#/cycles', 'Cycles', Fuel],
   ['#/withdrawal', 'Withdrawal', Wallet],
   ['#/labels', 'Labels', Tags],
 ] as const;
@@ -51,6 +53,8 @@ export default function App() {
     <ProposalDetail id={BigInt(m[1])} go={go} />
   ) : active === '#/monitor' ? (
     <Monitor />
+  ) : active === '#/cycles' ? (
+    <Cycles />
   ) : active === '#/withdrawal' ? (
     <Withdrawal />
   ) : active === '#/labels' ? (
@@ -123,7 +127,7 @@ export default function App() {
 
       <nav
         aria-label="Main"
-        className="fixed inset-x-0 bottom-0 z-20 grid grid-cols-4 border-t border-line bg-bg/90 pb-[env(safe-area-inset-bottom)] backdrop-blur-md sm:hidden"
+        className="fixed inset-x-0 bottom-0 z-20 grid grid-cols-5 border-t border-line bg-bg/90 pb-[env(safe-area-inset-bottom)] backdrop-blur-md sm:hidden"
       >
         {TABS.map(([h, label, Icon]) => (
           <a
@@ -131,7 +135,7 @@ export default function App() {
             href={h}
             aria-current={active === h ? 'page' : undefined}
             className={cx(
-              'flex flex-col items-center gap-0.5 py-2 text-[11px] font-medium transition-colors',
+              'flex flex-col items-center gap-0.5 py-2 text-[10px] font-medium transition-colors',
               active === h ? 'text-fg' : 'text-muted',
             )}
           >
