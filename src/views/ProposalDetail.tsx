@@ -64,8 +64,8 @@ function Body({ p, fns }: { p: ProposalData; fns?: Map<bigint, Fn> }) {
         </div>
       </div>
 
-      <ActionPanel p={p} fns={fns} />
       <Explain id={id} />
+      <ActionPanel p={p} fns={fns} />
       <Voting p={p} />
 
       {prop?.summary && (
