@@ -1,0 +1,42 @@
+{
+  "243dc30e16689141a4fe95bb2c0758ab9f9401f818a32b25bf1592ef88ee8c94": {
+    "canister": "water_neuron_self_check",
+    "commit": "8302b9fc0c44bf95833ff7973298e3eae53831c1",
+    "run_url": "https://github.com/marcinkolacz-cloud/wtn-verifier/actions/runs/39764411960"
+  },
+  "3be80391b5ee8735c230298b3e7b8e3003c03200d9bf77b3415e9c553835ab02": {
+    "canister": "icrc_validator",
+    "commit": "8302b9fc0c44bf95833ff7973298e3eae53831c1",
+    "run_url": "https://github.com/marcinkolacz-cloud/wtn-verifier/actions/runs/39764411960"
+  },
+  "4bf3323f9acc7a457787c57d650b8fd5d8746e8e3fe4e5307571b11a2ca62525": {
+    "canister": "water_neuron",
+    "commit": "8302b9fc0c44bf95833ff7973298e3eae53831c1",
+    "run_url": "https://github.com/marcinkolacz-cloud/wtn-verifier/actions/runs/39764411960"
+  },
+  "58bebce9dda938f5e53f0c204948eb08274e295258767de8722bd6de4d5e312c": {
+    "canister": "icrc_validator",
+    "commit": "cd865e97772ff93f7d10b939d86f0b2fd0e52eff",
+    "run_url": "https://github.com/marcinkolacz-cloud/wtn-verifier/actions/runs/39751726412"
+  },
+  "6dc0b6aaa3f51a8dc1f6378eacfced768f0ce39684a14d88fb230ddaf03c6910": {
+    "canister": "water_neuron",
+    "commit": "cd865e97772ff93f7d10b939d86f0b2fd0e52eff",
+    "run_url": "https://github.com/marcinkolacz-cloud/wtn-verifier/actions/runs/39751726412"
+  },
+  "6e9b0fb97ce7404b062ae0a864b2ac9c850e9c34fb69d2881d9513ac61760f12": {
+    "canister": "water_neuron_self_check",
+    "commit": "cd865e97772ff93f7d10b939d86f0b2fd0e52eff",
+    "run_url": "https://github.com/marcinkolacz-cloud/wtn-verifier/actions/runs/39751726412"
+  },
+  "94fa86805d30890aca66e3ab59dec62657fc5d4e71f300037a1182bed2ce5586": {
+    "canister": "boomerang",
+    "commit": "cd865e97772ff93f7d10b939d86f0b2fd0e52eff",
+    "run_url": "https://github.com/marcinkolacz-cloud/wtn-verifier/actions/runs/39751726412"
+  },
+  "ba0f30a13a62499f58dba90c95982fca851174d38b7e7ef4a13742611920dc18": {
+    "canister": "boomerang",
+    "commit": "8302b9fc0c44bf95833ff7973298e3eae53831c1",
+    "run_url": "https://github.com/marcinkolacz-cloud/wtn-verifier/actions/runs/39764411960"
+  }
+}

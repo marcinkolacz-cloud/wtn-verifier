@@ -1,0 +1,12 @@
+{
+  "commit": "8302b9fc0c44bf95833ff7973298e3eae53831c1",
+  "built_at": "2026-10-22T10:44:05Z",
+  "run_url": "https://github.com/marcinkolacz-cloud/wtn-verifier/actions/runs/39764411960",
+  "runner": "ubuntu-22.04 + nix",
+  "wasms": {
+    "boomerang": "ba0f30a13a62499f58dba90c95982fca851174d38b7e7ef4a13742611920dc18",
+    "icrc_validator": "3be80391b5ee8735c230298b3e7b8e3003c03200d9bf77b3415e9c553835ab02",
+    "water_neuron": "4bf3323f9acc7a457787c57d650b8fd5d8746e8e3fe4e5307571b11a2ca62525",
+    "water_neuron_self_check": "243dc30e16689141a4fe95bb2c0758ab9f9401f818a32b25bf1592ef88ee8c94"
+  }
+}
