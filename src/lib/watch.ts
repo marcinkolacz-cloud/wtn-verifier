@@ -37,7 +37,7 @@ export const subscribe = (f: () => void) => {
 
 function notify(a: Alert) {
   try {
-    if ('Notification' in window && Notification.permission === 'granted') new Notification('WTN Verifier', { body: a.text, tag: a.text });
+    if ('Notification' in window && Notification.permission === 'granted') new Notification('WTN Watch', { body: a.text, tag: a.text });
   } catch {}
 }
 

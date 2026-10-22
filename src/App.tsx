@@ -67,7 +67,10 @@ export default function App() {
             <span className="grid size-6 place-items-center rounded-md bg-fg text-bg">
               <Droplets className="size-3.5" />
             </span>
-            <span className="max-sm:hidden">WTN Verifier</span>
+            <span className="flex flex-col leading-none max-sm:hidden">
+              <span>WTN Watch</span>
+              <span className="mt-0.5 text-[10px] font-normal tracking-normal text-muted">independent verifier</span>
+            </span>
           </a>
           <nav className="flex gap-0.5 text-sm" aria-label="Main">
             {TABS.map(([h, label]) => (
@@ -112,7 +115,7 @@ export default function App() {
       </main>
 
       <footer className="mx-auto max-w-4xl px-4 pb-10 text-xs text-muted">
-        All data is read on-chain via anonymous query calls. No backend.{' '}
+        WTN Watch is an independent community tool, not affiliated with WaterNeuron. All data is read on-chain; no backend.{' '}
         <a className="underline hover:text-fg" href={`https://github.com/${REPO}`} target="_blank" rel="noreferrer">
           Protocol source
         </a>
