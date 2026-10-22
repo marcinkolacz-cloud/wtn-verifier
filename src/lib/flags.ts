@@ -1,10 +1,11 @@
 import type { ProposalData } from '../declarations/sns_governance';
 import {
-  canisterName, fetchBuild, functions, genericCall, listProposals, loadLabels, mirrorIds, summaryClaims, upgradeCall,
+  canisterName, fetchBuild, functions, genericCall, listProposals, loadLabels, mirrorIds, nnsNeuron, openWithdrawals,
+  summaryClaims, upgradeCall, wnInfo,
   type Fn,
 } from './data';
 import { IDS } from './ic';
-import { hex, icp, opt, sha256 } from './format';
+import { DAY, hex, icp, opt, sha256 } from './format';
 import type { Verdict } from './explain';
 
 export type Level = 'red' | 'orange' | 'green';
@@ -80,6 +81,37 @@ export async function computeFlags(p: ProposalData, verdict?: Verdict): Promise<
     flags.push({ level: 'orange', title: 'Changes DAO rules', text: 'Alters governance settings such as voting periods, fees or neuron limits.' });
   } else if (kind === 'Motion') {
     flags.push({ level: 'green', title: 'Motion (opinion poll)', text: 'Records the community view. Nothing changes on-chain automatically.' });
+  }
+
+  /* --- can withdrawal cancels undo it? (cancel_withdrawal merges back into the main neuron) --- */
+  const fnInfo = kind === 'ExecuteGenericNervousSystemFunction' ? fns.get(genericCall(p)!.function_id) : undefined;
+  const all = `${prop?.title ?? ''} ${opt(p.payload_text_rendering) ?? ''} ${fnInfo?.method ?? ''} ${fnInfo?.name ?? ''}`;
+  const touchesMain =
+    /dissolv|main.?neuron|6.?month|delay/i.test(all) ||
+    (kind === 'UpgradeSnsControlledCanister' && opt(upgradeCall(p)!.canister_id)?.toText() === IDS.waterNeuron);
+  if (touchesMain) {
+    try {
+      const target = /2 weeks|1209600|14 days|min_dissolve/i.test(all) ? 14 * DAY : undefined;
+      const info = await wnInfo();
+      const id6 = opt(info.neuron_id_6m)?.id;
+      const [main, rows] = await Promise.all([id6 !== undefined ? nnsNeuron(id6) : null, openWithdrawals()]);
+      const limit = target ?? Number(main?.dissolve_delay_seconds ?? 0n);
+      const longer = rows
+        .filter((r) => r.nns && Number(r.nns.dissolve_delay_seconds) > limit)
+        .sort((x, y) => Number(y.nns!.dissolve_delay_seconds - x.nns!.dissolve_delay_seconds));
+      if (longer.length) {
+        const worst = longer[0];
+        const total = longer.reduce((s, r) => s + r.w.request.icp_due, 0n);
+        flags.push({
+          level: 'red',
+          title: 'Can be undone by withdrawal cancels',
+          text:
+            `${longer.length} pending withdrawal${longer.length > 1 ? 's have' : ' has'} a longer lock than ${target ? 'the 2-week target' : "the main neuron's"} ` +
+            `(${icp(total, 0)} ICP; longest #${worst.w.request.withdrawal_id}: ${(Number(worst.nns!.dissolve_delay_seconds) / DAY).toFixed(0)} days). ` +
+            `If an owner presses Cancel, that neuron merges back into the main neuron and pushes its lock time (dissolve delay) up and changes its age — even after this proposal passes.`,
+        });
+      }
+    } catch {}
   }
 
   /* --- who proposed it --- */

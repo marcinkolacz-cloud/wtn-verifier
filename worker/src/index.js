@@ -2,7 +2,7 @@ import { Actor, HttpAgent } from '@icp-sdk/core/agent';
 import { idlFactory } from '../../src/declarations/sns_governance.idl.js';
 
 const GOV = 'jfnic-kaaaa-aaaaq-aadla-cai';
-const VERSION = 'v4';
+const VERSION = 'v5';
 const LANGS = { en: 'English' };
 const ORIGINS = [/^http:\/\/localhost(:\d+)?$/, /^http:\/\/127\.0\.0\.1(:\d+)?$/, /^https:\/\/[a-z0-9-]+\.(icp0\.io|ic0\.app)$/];
 
@@ -59,6 +59,12 @@ function prompt(p, lang) {
         `If a technical term is unavoidable (for example "dissolve delay" or "neuron"), explain it in a few words in brackets. ` +
         `Focus on what it means for holders: their nICP, withdrawals, rewards, the treasury and the DAO's control. ` +
         `Never tell people to read code, pull requests or GitHub. ` +
+        `Known WaterNeuron mechanics you MUST take into account: ` +
+        `(a) the protocol keeps a main neuron with a 6-month lock that holds most staked ICP; ` +
+        `(b) each withdrawal gets its own neuron split from the main one; ` +
+        `(c) "cancel withdrawal" merges that neuron back into the main neuron, and the merge sets the main neuron's lock time (dissolve delay) to the LONGER of the two and changes the neuron's age; ` +
+        `(d) so any proposal that shortens or fixes the main neuron's lock can be undone later if users cancel withdrawals whose lock is longer — list this as a risk whenever the proposal touches the main neuron, its lock time or dissolving; ` +
+        `(e) a neuron that is dissolving earns no voting rewards. ` +
         `Return ONLY a JSON object with keys: ` +
         `"does": 2-4 bullets on what the proposal does; ` +
         `"onchain": 1-3 bullets on what actually changes on-chain, based ONLY on the action type and decoded payload; ` +
