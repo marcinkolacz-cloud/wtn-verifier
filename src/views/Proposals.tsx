@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { fetchExplain, fetchVerdicts, verdictInfo, type Verdict } from '../lib/explain';
 import { AlertTriangle } from 'lucide-react';
 import { motion } from 'framer-motion';
-import { ChevronRight, Clock } from 'lucide-react';
+import { ChevronRight, Clock, Sparkles } from 'lucide-react';
 import type { ProposalData } from '../declarations/sns_governance';
 import { actionKey, deadline, functions, genericCall, isNnsMirror, listProposals, mirrorIds, status, type Fn, type Status } from '../lib/data';
 import { humanize, opt, pct, relative } from '../lib/format';
@@ -187,7 +187,14 @@ function Row({ p, fns, i, v, onOpen }: { p: ProposalData; fns?: Map<bigint, Fn>;
             </span>
           </div>
         </div>
-        <ChevronRight className="mt-0.5 size-4 shrink-0 text-muted opacity-0 transition-opacity group-hover:opacity-100" />
+        <span
+          aria-hidden="true"
+          className="inline-flex h-8 shrink-0 items-center gap-1.5 self-center rounded-lg border border-line bg-panel px-3 text-xs font-medium text-fg shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-colors group-hover:border-accent/40 group-hover:bg-accent/[0.06] group-hover:text-accent max-sm:px-2"
+        >
+          <Sparkles className="size-3.5 text-accent" />
+          <span className="max-sm:hidden">Explain</span>
+          <ChevronRight className="size-3.5 transition-transform group-hover:translate-x-0.5" />
+        </span>
       </div>
     </motion.button>
   );
