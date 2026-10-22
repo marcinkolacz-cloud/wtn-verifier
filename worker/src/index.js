@@ -3,7 +3,7 @@ import { idlFactory } from '../../src/declarations/sns_governance.idl.js';
 
 const GOV = 'jfnic-kaaaa-aaaaq-aadla-cai';
 const VERSION = 'v1';
-const LANGS = { pl: 'Polish', en: 'English' };
+const LANGS = { en: 'English' };
 const ORIGINS = [/^http:\/\/localhost(:\d+)?$/, /^http:\/\/127\.0\.0\.1(:\d+)?$/, /^https:\/\/[a-z0-9-]+\.(icp0\.io|ic0\.app)$/];
 
 const cors = (origin) =>

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { ArrowLeft, CheckCircle2, CircleDashed, Code2, FileCode, Hash, Scale, ShieldCheck, XCircle } from 'lucide-react';
 import type { ProposalData } from '../declarations/sns_governance';
 import {
-  actionKey, breakdown, buildDispatchUrl, canisterHealth, canisterName, fetchBuild, summaryClaims, codeSearchUrl, dashboardUrl, deadline, earlyDecision, ENTITIES, functions,
+  actionKey, breakdown, buildDispatchUrl, buildsIndex, canisterHealth, canisterName, fetchBuild, summaryClaims, codeSearchUrl, dashboardUrl, deadline, earlyDecision, ENTITIES, functions,
   genericCall, getProposal, loadLabels, neuronControllers, rules, saveLabel, status, upgradeCall, wouldPass,
   type Entity, type Fn,
 } from '../lib/data';
@@ -206,6 +206,9 @@ function UpgradeVerify({
   }, [arg]);
 
   const built = name && build ? build.wasms[name] : undefined;
+  const { data: idx } = useAsync(buildsIndex, []);
+  const from = running ? idx?.[running]?.commit : undefined;
+  const repoUrl = 'https://github.com/WaterNeuron/WaterNeuron';
   const checks: Check[] = [
     {
       label: 'Source commit in summary',
@@ -248,6 +251,27 @@ function UpgradeVerify({
       label: 'Upgrade arg hash',
       state: !argHash ? 'na' : claims.hashes.includes(argHash) ? 'ok' : 'fail',
       detail: !arg?.length ? 'No upgrade arg' : <Mono>{argHash ? short(argHash, 10) : '…'}</Mono>,
+    },
+    {
+      label: 'Code changes',
+      state: claims.commit && from ? 'ok' : 'na',
+      detail: !claims.commit ? (
+        '—'
+      ) : from === claims.commit ? (
+        'Same commit as the running module'
+      ) : from ? (
+        <span>
+          <Ext href={`${repoUrl}/compare/${from}...${claims.commit}`}>
+            diff <Mono>{from.slice(0, 7)}…{claims.commit.slice(0, 7)}</Mono>
+          </Ext>{' '}
+          · running → proposed
+        </span>
+      ) : (
+        <span>
+          Running module source unknown ·{' '}
+          <Ext href={`${repoUrl}/commits/${claims.commit}`}>history up to proposed commit</Ext>
+        </span>
+      ),
     },
     {
       label: 'Running module',
