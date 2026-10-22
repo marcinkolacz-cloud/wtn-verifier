@@ -1,9 +1,52 @@
-import { useState } from 'react';
-import { Sparkles } from 'lucide-react';
+import { useState, type ReactNode } from 'react';
+import { AlertTriangle, CheckCircle2, Cpu, Info, ListChecks, Sparkles, XCircle } from 'lucide-react';
 import { EXPLAIN_URL } from '../lib/ic';
-import { Button, Card, CardHeader, ErrorBox, Spinner } from './ui';
+import { Button, Card, CardHeader, ErrorBox, Spinner, cx } from './ui';
 
-type Res = { text: string; model: string; cached: boolean; created: string };
+type Data = {
+  does: string[];
+  onchain: string[];
+  consistency: 'match' | 'partial' | 'mismatch';
+  consistency_notes: string[];
+  risks: string[];
+  checks: string[];
+};
+type Res = { data: Data | null; text: string; model: string; cached: boolean; created: string };
+
+const tone = {
+  neutral: 'border-line bg-fg/[0.02]',
+  accent: 'border-accent/25 bg-accent/[0.05]',
+  yes: 'border-yes/25 bg-yes/[0.06]',
+  warn: 'border-warn/30 bg-warn/[0.07]',
+  no: 'border-no/30 bg-no/[0.06]',
+} as const;
+const iconTone = { neutral: 'text-muted', accent: 'text-accent', yes: 'text-yes', warn: 'text-warn', no: 'text-no' } as const;
+
+function Block({ t, icon: Icon, title, items }: { t: keyof typeof tone; icon: typeof Info; title: ReactNode; items: string[] }) {
+  if (!items?.length) return null;
+  return (
+    <div className={cx('rounded-lg border p-3.5', tone[t])}>
+      <div className={cx('mb-1.5 flex items-center gap-2 text-xs font-semibold', iconTone[t])}>
+        <Icon className="size-3.5" />
+        {title}
+      </div>
+      <ul className="space-y-1 text-sm leading-relaxed text-fg/90">
+        {items.map((x, i) => (
+          <li key={i} className="flex gap-2">
+            <span className="mt-2 size-1 shrink-0 rounded-full bg-current opacity-40" />
+            <span>{x}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+const verdict = {
+  match: { t: 'yes', icon: CheckCircle2, label: 'Summary matches the on-chain action' },
+  partial: { t: 'warn', icon: AlertTriangle, label: 'Summary makes claims the payload does not confirm' },
+  mismatch: { t: 'no', icon: XCircle, label: 'Summary contradicts the on-chain action' },
+} as const;
 
 export function Explain({ id }: { id: bigint }) {
   const [res, setRes] = useState<Res>();
@@ -28,6 +71,9 @@ export function Explain({ id }: { id: bigint }) {
     }
   };
 
+  const d = res?.data;
+  const v = d && (verdict[d.consistency] ?? verdict.partial);
+
   return (
     <Card>
       <CardHeader
@@ -46,16 +92,23 @@ export function Explain({ id }: { id: bigint }) {
         }
       />
       {(loading || error || res) && (
-        <div className="px-5 py-4">
+        <div className="space-y-3 px-5 py-4">
           {loading && <Spinner label="Generating… (first time ~10 s, then cached)" />}
           {error ? <ErrorBox error={error} onRetry={run} /> : null}
-          {res && (
+          {d && v && (
             <>
-              <div className="whitespace-pre-wrap text-sm leading-relaxed text-fg/90">{res.text}</div>
-              <div className="mt-3 text-[11px] text-muted">
-                {res.model.split('/').pop()} · {res.cached ? 'cached' : 'fresh'} · {new Date(res.created).toLocaleString('en-GB')}
-              </div>
+              <Block t="neutral" icon={Info} title="What it does" items={d.does} />
+              <Block t="accent" icon={Cpu} title="What changes on-chain" items={d.onchain} />
+              <Block t={v.t} icon={v.icon} title={v.label} items={d.consistency_notes} />
+              <Block t="no" icon={AlertTriangle} title="Risks" items={d.risks} />
+              <Block t="warn" icon={ListChecks} title="Check before voting" items={d.checks} />
             </>
+          )}
+          {res && !d && <div className="whitespace-pre-wrap text-sm leading-relaxed text-fg/90">{res.text}</div>}
+          {res && (
+            <div className="text-[11px] text-muted">
+              {res.model.split('/').pop()} · {res.cached ? 'cached' : 'fresh'} · {new Date(res.created).toLocaleString('en-GB')}
+            </div>
           )}
         </div>
       )}

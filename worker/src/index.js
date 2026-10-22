@@ -2,7 +2,7 @@ import { Actor, HttpAgent } from '@icp-sdk/core/agent';
 import { idlFactory } from '../../src/declarations/sns_governance.idl.js';
 
 const GOV = 'jfnic-kaaaa-aaaaq-aadla-cai';
-const VERSION = 'v1';
+const VERSION = 'v2';
 const LANGS = { en: 'English' };
 const ORIGINS = [/^http:\/\/localhost(:\d+)?$/, /^http:\/\/127\.0\.0\.1(:\d+)?$/, /^https:\/\/[a-z0-9-]+\.(icp0\.io|ic0\.app)$/];
 
@@ -54,10 +54,15 @@ function prompt(p, lang) {
       role: 'system',
       content:
         `You explain WaterNeuron SNS DAO governance proposals to token holders who are not developers. ` +
-        `Answer in ${LANGS[lang]}. Be concise and factual. Use plain text with short bullet points ("- "). ` +
-        `Sections: 1) What it does (2-4 bullets). 2) What actually changes on-chain, based ONLY on the action type and decoded payload. ` +
-        `3) Consistency: does the summary match the action/payload? Flag anything the summary claims that the payload does not show, or vice versa. ` +
-        `4) Points to check before voting (1-3 bullets). Never invent facts; say "unclear" when unsure. No voting recommendation.`,
+        `Answer in ${LANGS[lang]}. Be concise and factual; each bullet one short sentence. ` +
+        `Return ONLY a JSON object with keys: ` +
+        `"does": 2-4 bullets on what the proposal does; ` +
+        `"onchain": 1-3 bullets on what actually changes on-chain, based ONLY on the action type and decoded payload; ` +
+        `"consistency": "match" if the summary matches the action/payload, "partial" if the summary makes claims the payload cannot confirm, "mismatch" if they contradict; ` +
+        `"consistency_notes": 1-3 bullets explaining the consistency verdict; ` +
+        `"risks": 0-3 bullets on concrete risks or irreversible effects (empty if none); ` +
+        `"checks": 1-3 bullets on what to verify before voting. ` +
+        `Never invent facts; say "unclear" when unsure. No voting recommendation.`,
     },
     {
       role: 'user',
@@ -91,12 +96,39 @@ export default {
 
     let out;
     try {
-      out = await env.AI.run(env.MODEL, { messages: prompt(p, lang), max_tokens: 900, temperature: 0.2 });
+      out = await env.AI.run(env.MODEL, {
+        messages: prompt(p, lang),
+        max_tokens: 900,
+        temperature: 0.2,
+        response_format: {
+          type: 'json_schema',
+          json_schema: {
+            type: 'object',
+            properties: {
+              does: { type: 'array', items: { type: 'string' } },
+              onchain: { type: 'array', items: { type: 'string' } },
+              consistency: { type: 'string', enum: ['match', 'partial', 'mismatch'] },
+              consistency_notes: { type: 'array', items: { type: 'string' } },
+              risks: { type: 'array', items: { type: 'string' } },
+              checks: { type: 'array', items: { type: 'string' } },
+            },
+            required: ['does', 'onchain', 'consistency', 'consistency_notes', 'risks', 'checks'],
+          },
+        },
+      });
     } catch (e) {
       return json({ error: `AI failed: ${e?.message ?? e}` }, 502, origin);
     }
-    const text = typeof out?.response === 'string' ? out.response : JSON.stringify(out?.response ?? out);
-    const body = { id: idStr, lang, model: env.MODEL, text, created: new Date().toISOString() };
+    const raw = out?.response ?? out;
+    let data = null;
+    if (raw && typeof raw === 'object') data = raw;
+    else if (typeof raw === 'string') {
+      try {
+        data = JSON.parse(raw.slice(raw.indexOf('{'), raw.lastIndexOf('}') + 1));
+      } catch {}
+    }
+    const text = data ? '' : String(raw ?? '');
+    const body = { id: idStr, lang, model: env.MODEL, data, text, created: new Date().toISOString() };
     ctx.waitUntil(env.EXPLAIN.put(key, JSON.stringify(body)));
     return json({ ...body, cached: false }, 200, origin);
   },
