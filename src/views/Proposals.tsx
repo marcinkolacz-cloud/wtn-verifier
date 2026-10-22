@@ -92,7 +92,7 @@ export function Proposals({ go }: { go: (h: string) => void }) {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-lg font-semibold tracking-tight">Proposals</h1>
           <p className="text-sm text-muted">WaterNeuron SNS · read directly from governance</p>
@@ -195,7 +195,7 @@ function Row({ p, fns, i, v, onOpen }: { p: ProposalData; fns?: Map<bigint, Fn>;
           </div>
           <div className="mt-3 flex items-center gap-3">
             <VoteBar yes={yes} no={no} total={total} marks={[50]} />
-            <span className="tabular w-28 shrink-0 text-right text-[11px] text-muted">
+            <span className="tabular shrink-0 text-right text-[11px] text-muted sm:w-28">
               <span className="text-yes">{pct(yes, total)}</span> · <span className="text-no">{pct(no, total)}</span>
             </span>
           </div>

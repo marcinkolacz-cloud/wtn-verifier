@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Droplets, Moon, Sun } from 'lucide-react';
+import { Activity, Droplets, FileText, Moon, Sun, Tags, Wallet } from 'lucide-react';
 import { Proposals } from './views/Proposals';
 import { ProposalDetail } from './views/ProposalDetail';
 import { Monitor } from './views/Monitor';
@@ -24,10 +24,10 @@ const useHash = () => {
 };
 
 const TABS = [
-  ['#/', 'Proposals'],
-  ['#/monitor', 'Monitor'],
-  ['#/withdrawal', 'Withdrawal'],
-  ['#/labels', 'Labels'],
+  ['#/', 'Proposals', FileText],
+  ['#/monitor', 'Monitor', Activity],
+  ['#/withdrawal', 'Withdrawal', Wallet],
+  ['#/labels', 'Labels', Tags],
 ] as const;
 
 export default function App() {
@@ -62,17 +62,17 @@ export default function App() {
   return (
     <div className="min-h-dvh">
       <header className="sticky top-0 z-10 border-b border-line bg-bg/80 backdrop-blur-md">
-        <div className="mx-auto flex h-14 max-w-4xl items-center gap-4 px-4 sm:gap-6">
+        <div className="mx-auto flex h-14 max-w-6xl items-center gap-4 px-4 sm:gap-6 sm:px-6">
           <a href="#/" className="flex items-center gap-2 text-sm font-semibold tracking-tight">
             <span className="grid size-6 place-items-center rounded-md bg-fg text-bg">
               <Droplets className="size-3.5" />
             </span>
-            <span className="flex flex-col leading-none max-sm:hidden">
+            <span className="flex flex-col leading-none">
               <span>WTN Watch</span>
               <span className="mt-0.5 text-[10px] font-normal tracking-normal text-muted">independent verifier</span>
             </span>
           </a>
-          <nav className="flex gap-0.5 text-sm" aria-label="Main">
+          <nav className="flex gap-0.5 text-sm max-sm:hidden" aria-label="Main">
             {TABS.map(([h, label]) => (
               <a
                 key={h}
@@ -100,7 +100,7 @@ export default function App() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-4xl px-4 py-8">
+      <main className="mx-auto max-w-6xl px-3 py-5 sm:px-6 sm:py-8">
         <AnimatePresence mode="wait">
           <motion.div
             key={m ? 'p' + m[1] : active}
@@ -114,12 +114,32 @@ export default function App() {
         </AnimatePresence>
       </main>
 
-      <footer className="mx-auto max-w-4xl px-4 pb-10 text-xs text-muted">
+      <footer className="mx-auto max-w-6xl px-4 pb-24 text-xs text-muted sm:px-6 sm:pb-10">
         WTN Watch is an independent community tool, not affiliated with WaterNeuron. All data is read on-chain; no backend.{' '}
         <a className="underline hover:text-fg" href={`https://github.com/${REPO}`} target="_blank" rel="noreferrer">
           Protocol source
         </a>
       </footer>
+
+      <nav
+        aria-label="Main"
+        className="fixed inset-x-0 bottom-0 z-20 grid grid-cols-4 border-t border-line bg-bg/90 pb-[env(safe-area-inset-bottom)] backdrop-blur-md sm:hidden"
+      >
+        {TABS.map(([h, label, Icon]) => (
+          <a
+            key={h}
+            href={h}
+            aria-current={active === h ? 'page' : undefined}
+            className={cx(
+              'flex flex-col items-center gap-0.5 py-2 text-[11px] font-medium transition-colors',
+              active === h ? 'text-fg' : 'text-muted',
+            )}
+          >
+            <Icon className="size-5" />
+            {label}
+          </a>
+        ))}
+      </nav>
     </div>
   );
 }

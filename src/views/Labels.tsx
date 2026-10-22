@@ -62,7 +62,7 @@ export function Labels() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-4">
+      <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-lg font-semibold tracking-tight">Voter labels</h1>
           <p className="text-sm text-muted">Group neurons by controller principal or neuron-id prefix. Stored in this browser.</p>
@@ -116,7 +116,7 @@ export function Labels() {
         {rows.length ? (
           rows.map(({ k, v, def }) => (
             <div key={k} className="flex items-center gap-3 px-5 py-2.5 text-sm">
-              <span className="w-28 shrink-0 truncate font-medium">{v.name}</span>
+              <span className="w-20 shrink-0 truncate font-medium sm:w-28">{v.name}</span>
               <Mono className="min-w-0 flex-1 truncate text-muted">{k}</Mono>
               <Badge tone={v.entity === 'DFINITY' ? 'accent' : v.entity === 'Developers' ? 'yes' : 'warn'}>{v.entity}</Badge>
               {def ? (

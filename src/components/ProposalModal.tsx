@@ -84,8 +84,8 @@ export function ProposalModal({ p: listP, onClose, onOpen }: { p: ProposalData; 
           </section>
         </div>
 
-        <div className="flex items-center justify-between gap-3 border-t border-line px-5 py-3">
-          <span className="text-[11px] text-muted">Not a voting recommendation. Always do your own research.</span>
+        <div className="flex items-center justify-between gap-3 border-t border-line px-5 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] max-sm:justify-end">
+          <span className="text-[11px] text-muted max-sm:hidden">Not a voting recommendation. Always do your own research.</span>
           <Button variant="primary" onClick={onOpen}>
             Full details <ArrowRight className="size-3.5" />
           </Button>
