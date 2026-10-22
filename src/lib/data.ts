@@ -1,5 +1,5 @@
 import { Principal } from '@icp-sdk/core/principal';
-import { BUILDS_REPO, IDS, nnsGov, snsGov, snsRoot, waterNeuron } from './ic';
+import { BUILDS_REPO, EXPLAIN_URL, IDS, nnsGov, snsGov, snsRoot, waterNeuron } from './ic';
 import { hex, opt, pool, variantKey } from './format';
 import type { ProposalData, NervousSystemFunction } from '../declarations/sns_governance';
 import type { NeuronInfo } from '../declarations/nns_governance';
@@ -234,17 +234,123 @@ export async function nnsNeuron(id: bigint): Promise<NeuronInfo | null> {
 
 export const wnInfo = async (): Promise<CanisterInfo> => (await waterNeuron()).get_info();
 
-export async function canisterHealth() {
-  const r = await (await snsRoot()).get_sns_canisters_summary({ update_canister_list: [] });
-  const s = r.dapps.find((d) => opt(d.canister_id)?.toText() === IDS.waterNeuron);
-  const st = s && opt(s.status);
-  if (!st) return null;
+export type CanRow = {
+  kind: string;
+  name: string;
+  id: string;
+  cycles?: bigint;
+  burn?: bigint;
+  /** burn per day measured from daily snapshots (includes message & compute costs) */
+  measured?: bigint;
+  measuredDays?: number;
+  runway?: number;
+  status: string;
+  module?: string;
+  memory?: bigint;
+};
+
+export const CANISTER_NAMES: Record<string, string> = {
+  [IDS.waterNeuron]: 'water_neuron',
+  'daijl-2yaaa-aaaar-qag3a-cai': 'boomerang',
+  'buwm7-7yaaa-aaaar-qagva-cai': 'nICP ledger',
+  'btxkl-saaaa-aaaar-qagvq-cai': 'nICP index',
+  'n3i53-gyaaa-aaaam-acfaq-cai': 'frontend',
+  'uqeyr-oaaaa-aaaar-qbyyq-cai': 'icrc_validator',
+  'zftzm-qqaaa-aaaam-adxfa-cai': 'sns_module',
+};
+const KIND_NAMES: Record<string, string> = {
+  root: 'SNS root', governance: 'SNS governance', ledger: 'WTN ledger', index: 'WTN index', swap: 'SNS swap', archive: 'Ledger archive',
+};
+
+type RawRow = { kind: string; id: string; cycles: string | null; burn: string | null; status: string; module: string | null; memory: string | null; measured?: string; measuredDays?: number };
+
+const toRow = (r: RawRow): CanRow => {
+  const cycles = r.cycles ? BigInt(r.cycles) : undefined;
+  const idle = r.burn ? BigInt(r.burn) : undefined;
+  const measured = r.measured ? BigInt(r.measured) : undefined;
+  const burn = measured !== undefined && (idle === undefined || measured > idle) ? measured : idle;
   return {
-    cycles: st.cycles,
-    burnPerDay: st.idle_cycles_burned_per_day,
-    moduleHash: opt(st.module_hash) ? hex(opt(st.module_hash)!) : undefined,
-    status: variantKey(st.status) ?? '—',
-    memory: st.memory_size,
+    measured,
+    measuredDays: r.measuredDays,
+    kind: r.kind,
+    id: r.id,
+    name: CANISTER_NAMES[r.id] ?? KIND_NAMES[r.kind] ?? r.id.slice(0, 5),
+    cycles,
+    burn,
+    runway: cycles !== undefined && burn && burn > 0n ? Number(cycles / burn) : undefined,
+    status: r.status,
+    module: r.module ?? undefined,
+    memory: r.memory ? BigInt(r.memory) : undefined,
+  };
+};
+
+/**
+ * get_sns_canisters_summary is an UPDATE call that makes SNS root query every canister — it costs the DAO cycles.
+ * Go through the worker (shared 15-min cache) and only fall back to a direct call without it.
+ */
+let canCache: { at: number; p: Promise<{ at: number; rows: CanRow[] }> } | null = null;
+export const snsCanisters = (force = false) => {
+  if (!force && canCache && Date.now() - canCache.at < 5 * 60_000) return canCache.p;
+  const p = (async () => {
+    if (EXPLAIN_URL) {
+      const r = await fetch(`${EXPLAIN_URL.replace(/\/$/, '')}/cycles`);
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error ?? `HTTP ${r.status}`);
+      return { at: j.at as number, rows: (j.canisters as RawRow[]).map(toRow) };
+    }
+    const r = await (await snsRoot()).get_sns_canisters_summary({ update_canister_list: [] });
+    const raw = (kind: string, c: (typeof r.dapps)[number]): RawRow => {
+      const st = opt(c.status);
+      return {
+        kind,
+        id: opt(c.canister_id)?.toText() ?? '',
+        cycles: st ? String(st.cycles) : null,
+        burn: st ? String(st.idle_cycles_burned_per_day) : null,
+        status: st ? (variantKey(st.status) ?? 'unknown') : 'unknown',
+        module: st && opt(st.module_hash) ? hex(opt(st.module_hash)!) : null,
+        memory: st ? String(st.memory_size) : null,
+      };
+    };
+    const rows: RawRow[] = [];
+    (['root', 'governance', 'ledger', 'index', 'swap'] as const).forEach((k) => {
+      const c = opt(r[k]);
+      if (c) rows.push(raw(k, c));
+    });
+    r.dapps.forEach((c) => rows.push(raw('dapp', c)));
+    r.archives.forEach((c) => rows.push(raw('archive', c)));
+    return { at: Date.now(), rows: rows.map(toRow) };
+  })();
+  canCache = { at: Date.now(), p };
+  p.catch(() => (canCache = null));
+  return p;
+};
+
+export async function canisterHealth() {
+  const { rows } = await snsCanisters();
+  const w = rows.find((r) => r.id === IDS.waterNeuron);
+  if (!w || w.cycles === undefined) return null;
+  return { cycles: w.cycles, burnPerDay: w.burn ?? 0n, moduleHash: w.module, status: w.status, memory: w.memory ?? 0n };
+}
+
+export const cycleLevel = (r: CanRow) =>
+  r.status !== 'running' ? 'red' : r.runway === undefined ? 'gray' : r.runway < 30 ? 'red' : r.runway < 90 ? 'orange' : 'green';
+
+/* ---------- NNS periodic confirmation (refresh voting power / confirm following) ---------- */
+export const REFRESH_DECAY_START = 15_778_800; // ~6 months: voting power starts to decay
+export const REFRESH_FOLLOW_CLEAR = REFRESH_DECAY_START + 2_629_800; // +1 month: 0 VP, followees cleared
+
+export function refreshInfo(n?: NeuronInfo | null) {
+  const t = n && opt(n.voting_power_refreshed_timestamp_seconds);
+  if (t === undefined || t === null) return undefined;
+  const since = Date.now() / 1000 - Number(t);
+  const left = (REFRESH_DECAY_START - since) / 86_400;
+  return {
+    refreshedAt: Number(t),
+    daysSince: since / 86_400,
+    daysLeft: left,
+    level: (left < 0 ? 'red' : left < 30 ? 'orange' : 'green') as 'red' | 'orange' | 'green',
+    decaying: left < 0,
+    clearedIn: (REFRESH_FOLLOW_CLEAR - since) / 86_400,
   };
 }
 

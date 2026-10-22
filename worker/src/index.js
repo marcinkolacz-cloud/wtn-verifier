@@ -1,7 +1,10 @@
 import { Actor, HttpAgent } from '@icp-sdk/core/agent';
 import { idlFactory } from '../../src/declarations/sns_governance.idl.js';
+import { idlFactory as rootIdl } from '../../src/declarations/sns_root.idl.js';
 
 const GOV = 'jfnic-kaaaa-aaaaq-aadla-cai';
+const ROOT = 'jmod6-4iaaa-aaaaq-aadkq-cai';
+const CYCLES_TTL = 900; // s — one root call per 15 min for all users (each call costs the DAO's root canister cycles)
 const VERSION = 'v5';
 const LANGS = { en: 'English' };
 const ORIGINS = [/^http:\/\/localhost(:\d+)?$/, /^http:\/\/127\.0\.0\.1(:\d+)?$/, /^https:\/\/[a-z0-9-]+\.(icp0\.io|ic0\.app)$/];
@@ -90,6 +93,65 @@ export default {
     const origin = req.headers.get('Origin');
     const url = new URL(req.url);
     if (req.method === 'OPTIONS') return new Response(null, { headers: { ...cors(origin), 'Access-Control-Allow-Methods': 'GET' } });
+    if (url.pathname === '/cycles' && req.method === 'GET') {
+      const hit = await env.EXPLAIN.get('cycles', 'json');
+      if (hit && Date.now() - hit.at < CYCLES_TTL * 1000) return json({ ...hit, cached: true }, 200, origin);
+      try {
+        const agent = await HttpAgent.create({ host: 'https://icp-api.io' });
+        const root = Actor.createActor(rootIdl, { agent, canisterId: ROOT });
+        const r = await root.get_sns_canisters_summary({ update_canister_list: [] });
+        const row = (kind, c) => {
+          const st = opt(c.status);
+          return {
+            kind,
+            id: opt(c.canister_id)?.toText() ?? '',
+            cycles: st ? String(st.cycles) : null,
+            burn: st ? String(st.idle_cycles_burned_per_day) : null,
+            status: st ? Object.keys(st.status)[0] : 'unknown',
+            module: st && opt(st.module_hash) ? [...opt(st.module_hash)].map((b) => b.toString(16).padStart(2, '0')).join('') : null,
+            memory: st ? String(st.memory_size) : null,
+          };
+        };
+        const list = [];
+        for (const k of ['root', 'governance', 'ledger', 'index', 'swap']) if (opt(r[k])) list.push(row(k, opt(r[k])));
+        r.dapps.forEach((c) => list.push(row('dapp', c)));
+        r.archives.forEach((c) => list.push(row('archive', c)));
+        // daily history (≤ 8 points, ≥ 20 h apart) → measured burn incl. message/compute costs
+        const now = Date.now();
+        const hist = (await env.EXPLAIN.get('cycles:hist', 'json')) ?? [];
+        const point = { at: now, c: Object.fromEntries(list.filter((x) => x.cycles).map((x) => [x.id, x.cycles])) };
+        const newest = hist[hist.length - 1];
+        if (!newest || now - newest.at > 20 * 3600_000) {
+          hist.push(point);
+          while (hist.length > 8) hist.shift();
+          ctx.waitUntil(env.EXPLAIN.put('cycles:hist', JSON.stringify(hist)));
+        }
+        for (const x of list) {
+          if (!x.cycles) continue;
+          // oldest point after the last top-up (cycles only go down between top-ups)
+          let base = null;
+          for (let i = hist.length - 1; i >= 0; i--) {
+            const v = hist[i].c[x.id];
+            if (!v || BigInt(v) < BigInt(x.cycles)) break;
+            if (now - hist[i].at >= 20 * 3600_000) base = { at: hist[i].at, v };
+            const next = hist[i - 1]?.c[x.id];
+            if (next && BigInt(next) < BigInt(v)) break;
+          }
+          if (base) {
+            const days = (now - base.at) / 86_400_000;
+            const used = BigInt(base.v) - BigInt(x.cycles);
+            x.measured = String(BigInt(Math.round(Number(used) / days)));
+            x.measuredDays = Math.round(days * 10) / 10;
+          }
+        }
+        const body = { at: now, canisters: list };
+        ctx.waitUntil(env.EXPLAIN.put('cycles', JSON.stringify(body)));
+        return json({ ...body, cached: false }, 200, origin);
+      } catch (e) {
+        if (hit) return json({ ...hit, cached: true, stale: true }, 200, origin);
+        return json({ error: `IC query failed: ${e?.message ?? e}` }, 502, origin);
+      }
+    }
     if (url.pathname === '/verdicts' && req.method === 'GET') {
       const ids = (url.searchParams.get('ids') ?? '').split(',').filter((x) => /^\d{1,9}$/.test(x)).slice(0, 60);
       const rows = await Promise.all(ids.map((id) => env.EXPLAIN.get(`${VERSION}:${id}:en`, 'json')));

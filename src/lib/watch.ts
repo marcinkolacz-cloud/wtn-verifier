@@ -1,9 +1,15 @@
-import { functions, mirrorIds, listProposals, nnsNeuron, openWithdrawals, resetWithdrawals, wnInfo } from './data';
+import { cycleLevel, functions, mirrorIds, listProposals, nnsNeuron, openWithdrawals, refreshInfo, resetWithdrawals, snsCanisters, wnInfo } from './data';
 import { DAY, opt } from './format';
 
 export const INTERVAL_MS = 5 * 60_000;
 
-type Snap = { mainDelay: number; mainState: number; frozen: string[]; risky: string[]; lastProposal: string; at: number };
+type Snap = {
+  mainDelay: number; mainState: number; frozen: string[]; risky: string[]; lastProposal: string; at: number;
+  /** canister name -> 'red' | 'orange' */
+  low?: Record<string, string>;
+  /** neuron -> days left until NNS refresh deadline */
+  refresh?: Record<string, number>;
+};
 export type Alert = { at: number; text: string; level: 'warn' | 'info' };
 type State = { enabled: boolean; running: boolean; lastRun?: number; error?: string; log: Alert[] };
 
@@ -46,7 +52,23 @@ async function snapshot(): Promise<Snap> {
   const fns = await functions();
   const [info, ps] = await Promise.all([wnInfo(), listProposals(undefined, 1, mirrorIds(fns))]);
   const id6 = opt(info.neuron_id_6m)?.id;
-  const [n6, rows] = await Promise.all([id6 !== undefined ? nnsNeuron(id6) : null, openWithdrawals()]);
+  const id8 = opt(info.neuron_id_8y)?.id;
+  const [n6, n8, rows, cans] = await Promise.all([
+    id6 !== undefined ? nnsNeuron(id6) : null,
+    id8 !== undefined ? nnsNeuron(id8) : null,
+    openWithdrawals(),
+    snsCanisters().catch(() => null),
+  ]);
+  const low: Record<string, string> = {};
+  cans?.rows.forEach((r) => {
+    const l = cycleLevel(r);
+    if (l === 'red' || l === 'orange') low[r.name] = `${l}:${r.runway ?? '?'}`;
+  });
+  const refresh: Record<string, number> = {};
+  for (const [k, n] of [['8-year', n8], ['6-month', n6]] as const) {
+    const r = refreshInfo(n);
+    if (r) refresh[k] = r.daysLeft;
+  }
   const mainDelay = Number(n6?.dissolve_delay_seconds ?? 0n);
   const latest = ps[0];
   return {
@@ -58,6 +80,8 @@ async function snapshot(): Promise<Snap> {
       .map((r) => String(r.w.request.withdrawal_id)),
     lastProposal: String(opt(latest?.id ?? [])?.id ?? 0n),
     at: Date.now(),
+    low: cans ? low : undefined,
+    refresh,
   };
 }
 
@@ -73,6 +97,25 @@ function diff(prev: Snap | null, cur: Snap): Alert[] {
   if (newFrozen.length) out.push({ at, level: 'warn', text: `New frozen withdrawal: #${newFrozen.join(', #')}` });
   const newRisky = cur.risky.filter((x) => !prev.risky.includes(x));
   if (newRisky.length) out.push({ at, level: 'warn', text: `Cancel could raise main delay: #${newRisky.join(', #')}` });
+  if (cur.low && prev.low) {
+    for (const [name, v] of Object.entries(cur.low)) {
+      const [lvl, days] = v.split(':');
+      const was = prev.low[name]?.split(':')[0];
+      if (was !== lvl && !(was === 'red' && lvl === 'orange'))
+        out.push({ at, level: 'warn', text: `${name} cycles ${lvl === 'red' ? 'critical' : 'low'}: ~${days} days left` });
+    }
+  }
+  // NNS periodic confirmation: alert once when crossing 30 / 14 / 7 / 0 days
+  for (const [k, left] of Object.entries(cur.refresh ?? {})) {
+    const before = prev.refresh?.[k];
+    const hit = [30, 14, 7, 0].find((t) => left <= t && (before === undefined || before > t));
+    if (hit !== undefined)
+      out.push({
+        at,
+        level: 'warn',
+        text: hit === 0 ? `${k} neuron missed NNS confirmation — voting power decaying` : `${k} neuron must confirm following within ${Math.ceil(left)} days`,
+      });
+  }
   if (BigInt(cur.lastProposal) > BigInt(prev.lastProposal))
     out.push({ at, level: 'info', text: `New proposal #${cur.lastProposal}` });
   return out;

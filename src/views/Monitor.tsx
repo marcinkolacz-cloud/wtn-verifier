@@ -1,7 +1,8 @@
 import { useMemo, useState, useSyncExternalStore } from 'react';
 import { DateRange, FilterBar, inRange, NumberInput, SearchInput, Select, SortHeader, type Sort } from '../components/Filters';
 import { AlertTriangle, Activity, Bell, BellOff, RefreshCw, ShieldCheck } from 'lucide-react';
-import { buildsIndex, canisterHealth, neuronState, nnsNeuron, openWithdrawals, resetWithdrawals, wnInfo, type WRow } from '../lib/data';
+import { CyclesCard } from '../components/Cycles';
+import { buildsIndex, canisterHealth, neuronState, refreshInfo, nnsNeuron, openWithdrawals, resetWithdrawals, wnInfo, type WRow } from '../lib/data';
 import { statusReport } from '../lib/report';
 import { clearLog, INTERVAL_MS, runCheck, setWatch, subscribe, watchState } from '../lib/watch';
 import { cycles, date, DAY, days, humanize, icp, opt, relative } from '../lib/format';
@@ -66,6 +67,30 @@ export function Monitor() {
       </div>
 
       {core.error ? <ErrorBox error={core.error} onRetry={core.reload} /> : null}
+
+      {d &&
+        ([['8-year', d.n8], ['6-month', d.n6]] as const).map(([name, n]) => {
+          const r = refreshInfo(n);
+          if (!r || r.level === 'green') return null;
+          return (
+            <div
+              key={name}
+              className={`flex items-start gap-3 rounded-xl border p-4 text-sm ${r.level === 'red' ? 'border-no/30 bg-no/[0.06]' : 'border-warn/30 bg-warn/[0.07]'}`}
+            >
+              <AlertTriangle className={`mt-0.5 size-4 shrink-0 ${r.level === 'red' ? 'text-no' : 'text-warn'}`} />
+              <div>
+                <div className={`font-medium ${r.level === 'red' ? 'text-no' : 'text-warn'}`}>
+                  {r.decaying ? `${name} neuron is losing voting power` : `${name} neuron must confirm following in ${Math.ceil(r.daysLeft)} days`}
+                </div>
+                <div className="mt-1 text-fg/80">
+                  Last NNS confirmation {date(r.refreshedAt)} ({Math.floor(r.daysSince)} days ago). NNS requires a refresh every 6 months;
+                  after that voting power and rewards drop, and after 7 months its followees are cleared
+                  {r.clearedIn > 0 ? ` (in ${Math.ceil(r.clearedIn)} days)` : ' (already past)'}. The water_neuron canister needs to refresh it.
+                </div>
+              </div>
+            </div>
+          );
+        })}
 
       {risky.length > 0 && (
         <div className="flex items-start gap-3 rounded-xl border border-warn/30 bg-warn/[0.07] p-4 text-sm">
@@ -132,6 +157,14 @@ export function Monitor() {
                     <span className="tabular text-muted">delay {days(n.dissolve_delay_seconds)}</span>
                     <span className="tabular text-muted">age {days(n.age_seconds)}</span>
                     <span className="tabular text-muted">{icp(n.stake_e8s, 0)} ICP</span>
+                    {(() => {
+                      const r = refreshInfo(n);
+                      return r ? (
+                        <Badge tone={r.level === 'red' ? 'no' : r.level === 'orange' ? 'warn' : 'yes'}>
+                          {r.decaying ? 'VP decaying' : `confirm in ${Math.ceil(r.daysLeft)} d`}
+                        </Badge>
+                      ) : null;
+                    })()}
                   </>
                 )}
               </div>
@@ -155,6 +188,8 @@ export function Monitor() {
           </div>
         </Card>
       )}
+
+      <CyclesCard tick={tick} />
 
       <Watcher />
 
@@ -313,7 +348,7 @@ function Watcher() {
         sub={
           w.enabled
             ? `Checking every ${INTERVAL_MS / 60000} min while this page is open${w.lastRun ? ` · last ${relative(w.lastRun / 1000)}` : ''}${perm !== 'granted' ? ' · browser notifications off' : ''}`
-            : 'Delay increase, new frozen withdrawals, cancel risk, new proposals'
+            : 'Delay increase, frozen withdrawals, cancel risk, low cycles, NNS confirm-following, new proposals'
         }
         right={
           <div className="flex gap-2">
