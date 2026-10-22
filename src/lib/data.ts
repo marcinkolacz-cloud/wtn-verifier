@@ -113,8 +113,8 @@ export const deadline = (p: ProposalData) =>
 export type Entity = 'DFINITY' | 'Developers' | 'Whales' | 'Community';
 export const ENTITIES: Entity[] = ['DFINITY', 'Developers', 'Whales', 'Community'];
 
-type Label = { name: string; entity: Entity };
-const DEFAULT_LABELS: Record<string, Label> = {
+export type Label = { name: string; entity: Entity };
+export const DEFAULT_LABELS: Record<string, Label> = {
   'n2xex-iyaaa-aaaar-qaaeq-cai': { name: 'DFINITY', entity: 'DFINITY' },
   '6495d26172c697cb': { name: 'Quint', entity: 'Developers' },
 };
@@ -125,6 +125,18 @@ export function loadLabels(): Record<string, Label> {
   } catch {
     return { ...DEFAULT_LABELS };
   }
+}
+export function userLabels(): Record<string, Label> {
+  try {
+    return JSON.parse(localStorage.getItem('wtn-labels') || '{}');
+  } catch {
+    return {};
+  }
+}
+export function setUserLabels(l: Record<string, Label>) {
+  try {
+    localStorage.setItem('wtn-labels', JSON.stringify(l));
+  } catch {}
 }
 export function saveLabel(key: string, l: Label | null) {
   try {
@@ -243,6 +255,9 @@ export const withdrawalNeuron = (w: WithdrawalDetails) => {
 };
 
 let wCache: Promise<WithdrawalDetails[]> | null = null;
+export const resetWithdrawals = () => {
+  wCache = null;
+};
 export const allWithdrawals = () =>
   (wCache ??= (async () => {
     const wn = await waterNeuron();
@@ -309,3 +324,23 @@ export const buildDispatchUrl = () => `https://github.com/${BUILDS_REPO}/actions
 
 export const canisterName = (id?: string) =>
   id === IDS.waterNeuron ? 'water_neuron' : id === 'daijl-2yaaa-aaaar-qag3a-cai' ? 'boomerang' : id === 'uqeyr-oaaaa-aaaar-qbyyq-cai' ? 'icrc_validator' : undefined;
+
+/** hash -> build, from builds/index.json (written by CI) with a contents-API fallback */
+let idxCache: Promise<Record<string, { commit: string; canister: string; run_url: string }>> | null = null;
+export const buildsIndex = () =>
+  (idxCache ??= (async () => {
+    const raw = await fetch(`https://raw.githubusercontent.com/${BUILDS_REPO}/main/builds/index.json`, { cache: 'no-store' });
+    if (raw.ok) return raw.json();
+    const ls = await fetch(`https://api.github.com/repos/${BUILDS_REPO}/contents/builds`);
+    if (!ls.ok) throw new Error(`GitHub ${ls.status}`);
+    const files: { name: string }[] = await ls.json();
+    const out: Record<string, { commit: string; canister: string; run_url: string }> = {};
+    await pool(files.filter((f) => /^[0-9a-f]{40}\.json$/.test(f.name)), 6, async (f) => {
+      const b = await fetchBuild(f.name.slice(0, 40));
+      if (b) for (const [canister, h] of Object.entries(b.wasms)) out[h] = { commit: b.commit, canister, run_url: b.run_url };
+    });
+    return out;
+  })().catch((e) => {
+    idxCache = null;
+    throw e;
+  }));

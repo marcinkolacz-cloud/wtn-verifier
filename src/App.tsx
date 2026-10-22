@@ -5,6 +5,8 @@ import { Proposals } from './views/Proposals';
 import { ProposalDetail } from './views/ProposalDetail';
 import { Monitor } from './views/Monitor';
 import { Withdrawal } from './views/Withdrawal';
+import { Labels } from './views/Labels';
+import { startWatcher } from './lib/watch';
 import { cx } from './components/ui';
 import { REPO } from './lib/ic';
 
@@ -25,10 +27,12 @@ const TABS = [
   ['#/', 'Proposals'],
   ['#/monitor', 'Monitor'],
   ['#/withdrawal', 'Withdrawal'],
+  ['#/labels', 'Labels'],
 ] as const;
 
 export default function App() {
   const hash = useHash();
+  useEffect(startWatcher, []);
   const go = (h: string) => (location.hash = h);
   const [dark, setDark] = useState(() => document.documentElement.classList.contains('dark'));
 
@@ -49,6 +53,8 @@ export default function App() {
     <Monitor />
   ) : active === '#/withdrawal' ? (
     <Withdrawal />
+  ) : active === '#/labels' ? (
+    <Labels />
   ) : (
     <Proposals go={go} />
   );
@@ -56,14 +62,14 @@ export default function App() {
   return (
     <div className="min-h-dvh">
       <header className="sticky top-0 z-10 border-b border-line bg-bg/80 backdrop-blur-md">
-        <div className="mx-auto flex h-14 max-w-4xl items-center gap-6 px-4">
+        <div className="mx-auto flex h-14 max-w-4xl items-center gap-4 px-4 sm:gap-6">
           <a href="#/" className="flex items-center gap-2 text-sm font-semibold tracking-tight">
             <span className="grid size-6 place-items-center rounded-md bg-fg text-bg">
               <Droplets className="size-3.5" />
             </span>
             <span className="max-sm:hidden">WTN Verifier</span>
           </a>
-          <nav className="flex gap-1 text-sm" aria-label="Main">
+          <nav className="flex gap-0.5 text-sm" aria-label="Main">
             {TABS.map(([h, label]) => (
               <a
                 key={h}

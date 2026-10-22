@@ -1,5 +1,5 @@
-import type { ReactNode } from 'react';
-import { AlertTriangle, ExternalLink, Loader2 } from 'lucide-react';
+import { useState, type ReactNode } from 'react';
+import { AlertTriangle, Check, Copy, ExternalLink, Loader2 } from 'lucide-react';
 
 export const cx = (...c: (string | false | null | undefined)[]) => c.filter(Boolean).join(' ');
 
@@ -154,4 +154,24 @@ export function VoteBar({ yes, no, total, marks = [] }: { yes: number; no: numbe
 
 export function Empty({ children }: { children: ReactNode }) {
   return <div className="px-5 py-10 text-center text-sm text-muted">{children}</div>;
+}
+
+export function CopyButton({ get, label = 'Copy for Discord' }: { get: () => Promise<string> | string; label?: string }) {
+  const [state, setState] = useState<'idle' | 'busy' | 'done' | 'err'>('idle');
+  const run = async () => {
+    setState('busy');
+    try {
+      await navigator.clipboard.writeText(await get());
+      setState('done');
+    } catch {
+      setState('err');
+    }
+    setTimeout(() => setState('idle'), 2000);
+  };
+  return (
+    <Button onClick={run} disabled={state === 'busy'}>
+      {state === 'done' ? <Check className="size-3.5 text-yes" /> : state === 'busy' ? <Loader2 className="size-3.5 animate-spin" /> : <Copy className="size-3.5" />}
+      {state === 'done' ? 'Copied' : state === 'err' ? 'Copy failed' : label}
+    </Button>
+  );
 }

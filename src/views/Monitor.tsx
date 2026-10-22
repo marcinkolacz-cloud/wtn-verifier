@@ -1,9 +1,11 @@
-import { useState } from 'react';
-import { AlertTriangle, Activity, RefreshCw, ShieldCheck } from 'lucide-react';
-import { canisterHealth, neuronState, nnsNeuron, openWithdrawals, wnInfo, type WRow } from '../lib/data';
-import { cycles, DAY, days, humanize, icp, opt } from '../lib/format';
+import { useState, useSyncExternalStore } from 'react';
+import { AlertTriangle, Activity, Bell, BellOff, RefreshCw, ShieldCheck } from 'lucide-react';
+import { buildsIndex, canisterHealth, neuronState, nnsNeuron, openWithdrawals, resetWithdrawals, wnInfo, type WRow } from '../lib/data';
+import { statusReport } from '../lib/report';
+import { clearLog, INTERVAL_MS, runCheck, setWatch, subscribe, watchState } from '../lib/watch';
+import { cycles, date, DAY, days, humanize, icp, opt, relative } from '../lib/format';
 import { useAsync } from '../lib/useAsync';
-import { Badge, Button, Card, CardHeader, Empty, ErrorBox, Mono, Skeleton, Spinner, Stat } from '../components/ui';
+import { Badge, Button, Card, CardHeader, CopyButton, Empty, ErrorBox, Ext, Mono, Skeleton, Spinner, Stat } from '../components/ui';
 
 export function Monitor() {
   const [tick, setTick] = useState(0);
@@ -18,7 +20,11 @@ export function Monitor() {
     ]);
     return { info, id6, id8, n6, n8, health };
   }, [tick]);
-  const wd = useAsync(openWithdrawals, [tick]);
+  const wd = useAsync(() => {
+    if (tick) resetWithdrawals();
+    return openWithdrawals();
+  }, [tick]);
+  const idx = useAsync(buildsIndex, []);
 
   const d = core.data;
   const mainDelay = Number(d?.n6?.dissolve_delay_seconds ?? 0n);
@@ -26,6 +32,7 @@ export function Monitor() {
   const risky = (wd.data ?? []).filter(
     (r) => r.nns && r.nns.state === 1 && Number(r.nns.dissolve_delay_seconds) > mainDelay,
   );
+  const src = d?.health?.moduleHash ? idx.data?.[d.health.moduleHash] : undefined;
   const runway = d?.health && d.health.burnPerDay > 0n ? Number(d.health.cycles / d.health.burnPerDay) : undefined;
 
   return (
@@ -35,9 +42,26 @@ export function Monitor() {
           <h1 className="text-lg font-semibold tracking-tight">Protocol monitor</h1>
           <p className="text-sm text-muted">water_neuron canister · NNS neurons · open withdrawals</p>
         </div>
-        <Button onClick={() => setTick((t) => t + 1)} disabled={core.loading || wd.loading}>
-          <RefreshCw className={`size-3.5 ${core.loading || wd.loading ? 'animate-spin' : ''}`} /> Refresh
-        </Button>
+        <div className="flex gap-2">
+          {d && wd.data && (
+            <CopyButton
+              label="Copy status"
+              get={() =>
+                statusReport({
+                  mainDelay,
+                  mainState: d.n6 ? neuronState(d.n6.state) : 'unknown',
+                  stake: d.info.neuron_6m_stake_e8s,
+                  health: d.health,
+                  source: src ? `commit ${src.commit.slice(0, 12)} (reproduced)` : undefined,
+                  rows: wd.data!,
+                })
+              }
+            />
+          )}
+          <Button onClick={() => setTick((t) => t + 1)} disabled={core.loading || wd.loading}>
+            <RefreshCw className={`size-3.5 ${core.loading || wd.loading ? 'animate-spin' : ''}`} /> Refresh
+          </Button>
+        </div>
       </div>
 
       {core.error ? <ErrorBox error={core.error} onRetry={core.reload} /> : null}
@@ -116,11 +140,22 @@ export function Monitor() {
                 <span className="w-16 font-medium">Module</span>
                 <Mono className="break-all text-muted">{d.health.moduleHash ?? '—'}</Mono>
                 <Badge>{humanize(d.health.status)}</Badge>
+                {src ? (
+                  <span className="inline-flex items-center gap-1.5 text-xs">
+                    <ShieldCheck className="size-3.5 text-yes" />
+                    <span className="text-muted">built from</span>
+                    <Ext href={`https://github.com/WaterNeuron/WaterNeuron/commit/${src.commit}`}><Mono>{src.commit.slice(0, 12)}</Mono></Ext>
+                  </span>
+                ) : (
+                  <span className="text-xs text-warn">{idx.loading ? 'checking source…' : idx.error ? 'builds index unavailable' : 'source not reproduced yet'}</span>
+                )}
               </div>
             )}
           </div>
         </Card>
       )}
+
+      <Watcher />
 
       <Card>
         <CardHeader
@@ -185,5 +220,57 @@ export function WTable({ rows, mainDelay }: { rows: WRow[]; mainDelay?: number }
         </tbody>
       </table>
     </div>
+  );
+}
+
+function Watcher() {
+  const w = useSyncExternalStore(subscribe, watchState);
+  const perm = typeof Notification === 'undefined' ? 'unsupported' : Notification.permission;
+  return (
+    <Card>
+      <CardHeader
+        title={
+          <span className="inline-flex items-center gap-2">
+            {w.enabled ? <Bell className="size-4 text-accent" /> : <BellOff className="size-4 text-muted" />} Alerts
+          </span>
+        }
+        sub={
+          w.enabled
+            ? `Checking every ${INTERVAL_MS / 60000} min while this page is open${w.lastRun ? ` · last ${relative(w.lastRun / 1000)}` : ''}${perm !== 'granted' ? ' · browser notifications off' : ''}`
+            : 'Delay increase, new frozen withdrawals, cancel risk, new proposals'
+        }
+        right={
+          <div className="flex gap-2">
+            {w.enabled && (
+              <Button variant="ghost" onClick={runCheck} disabled={w.running}>
+                <RefreshCw className={`size-3.5 ${w.running ? 'animate-spin' : ''}`} />
+              </Button>
+            )}
+            <Button variant={w.enabled ? 'default' : 'primary'} onClick={() => setWatch(!w.enabled)}>
+              {w.enabled ? 'Turn off' : 'Turn on'}
+            </Button>
+          </div>
+        }
+      />
+      {w.error && <div className="px-5 pt-3 text-xs text-no">{w.error}</div>}
+      {w.log.length ? (
+        <>
+          <ul className="divide-y divide-line text-sm">
+            {w.log.slice(0, 10).map((a, i) => (
+              <li key={i} className="flex items-center gap-3 px-5 py-2">
+                <Badge tone={a.level === 'warn' ? 'warn' : 'accent'}>{a.level === 'warn' ? 'Alert' : 'Info'}</Badge>
+                <span className="min-w-0 flex-1">{a.text}</span>
+                <span className="shrink-0 text-xs text-muted">{date(a.at / 1000)}</span>
+              </li>
+            ))}
+          </ul>
+          <div className="flex justify-end px-5 pb-3">
+            <Button variant="ghost" onClick={clearLog}>Clear</Button>
+          </div>
+        </>
+      ) : (
+        w.enabled && <Empty>No changes detected yet. The first check stores a baseline.</Empty>
+      )}
+    </Card>
   );
 }

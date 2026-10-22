@@ -21,10 +21,10 @@ jobs:
       - name: Validate input
         run: echo "${{ inputs.commit }}" | grep -Eq '^[0-9a-f]{40}$'
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Checkout WaterNeuron
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: WaterNeuron/WaterNeuron
           ref: ${{ inputs.commit }}
@@ -61,11 +61,24 @@ jobs:
           json.dump(out, open(f"builds/{os.environ['COMMIT']}.json", 'w'), indent=2)
           PY
 
+      - name: Rebuild index
+        run: |
+          python3 - << 'PY'
+          import json, glob, os
+          idx = {}
+          for f in sorted(glob.glob('builds/*.json')):
+              if os.path.basename(f) == 'index.json':
+                  continue
+              b = json.load(open(f))
+              for name, h in b['wasms'].items():
+                  idx[h] = {'commit': b['commit'], 'canister': name, 'run_url': b['run_url']}
+          json.dump(idx, open('builds/index.json', 'w'), indent=2, sort_keys=True)
+          PY
+
       - name: Commit result
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add builds/
           git commit -m "build: WaterNeuron ${{ inputs.commit }}" || exit 0
-          git pull --rebase
-          git push
+          for i in 1 2 3; do git pull --rebase -X theirs && git push && break; sleep 5; done

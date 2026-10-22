@@ -8,7 +8,8 @@ import {
 } from '../lib/data';
 import { compact, date, hex, humanize, icp, opt, pct, relative, sha256, short, variantKey } from '../lib/format';
 import { useAsync } from '../lib/useAsync';
-import { Badge, Button, Card, CardHeader, Empty, ErrorBox, Ext, Mono, Skeleton, Spinner, VoteBar } from '../components/ui';
+import { Badge, Button, Card, CardHeader, CopyButton, Empty, ErrorBox, Ext, Mono, Skeleton, Spinner, VoteBar } from '../components/ui';
+import { proposalReport } from '../lib/report';
 import { statusTone } from './Proposals';
 
 export function ProposalDetail({ id, go }: { id: bigint; go: (h: string) => void }) {
@@ -44,6 +45,7 @@ function Body({ p, fns }: { p: ProposalData; fns?: Map<bigint, Fn> }) {
     <>
       <div>
         <div className="flex flex-wrap items-center gap-2">
+          <div className="order-last ml-auto"><CopyButton get={() => proposalReport(p)} /></div>
           <Mono className="text-muted">#{String(id)}</Mono>
           <Badge tone={statusTone(s)}>{s}</Badge>
           {topic && <Badge>{humanize(topic)}</Badge>}
@@ -410,7 +412,7 @@ function Voters({ bd, onLabel }: { bd: NonNullable<ReturnType<typeof breakdown>>
               <select
                 aria-label="Entity"
                 value={v.entity}
-                onChange={(e) => tag(v.key, e.target.value === 'Community' || e.target.value === 'Whales' ? '' : (e.target.value as Entity))}
+                onChange={(e) => tag(v.key, e.target.value === 'Community' ? '' : (e.target.value as Entity))}
                 className="h-7 rounded-md border border-line bg-panel px-1.5 text-xs text-muted"
               >
                 {ENTITIES.map((e) => (
