@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react';
+import { fetchExplain, fetchVerdicts, verdictInfo, type Verdict } from '../lib/explain';
+import { AlertTriangle } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { ChevronRight, Clock } from 'lucide-react';
 import type { ProposalData } from '../declarations/sns_governance';
@@ -16,6 +18,7 @@ export function Proposals({ go }: { go: (h: string) => void }) {
   const [error, setError] = useState<unknown>();
   const [done, setDone] = useState(false);
   const [filter, setFilter] = useState<'all' | 'open'>('all');
+  const [verdicts, setVerdicts] = useState<Record<string, Verdict>>({});
   const [hideMirror, setHideMirror] = useState(() => {
     try {
       return localStorage.getItem('hide-mirror') !== '0';
@@ -56,6 +59,28 @@ export function Proposals({ go }: { go: (h: string) => void }) {
     load();
   }, []);
 
+  // cached AI verdicts for the visible list; auto-generate for open proposals that have none
+  useEffect(() => {
+    if (!items.length) return;
+    let stop = false;
+    (async () => {
+      const ids = items.map((p) => opt(p.id)!.id);
+      const v = await fetchVerdicts(ids).catch(() => ({}));
+      if (stop) return;
+      setVerdicts((cur) => ({ ...cur, ...v }));
+      const todo = items.filter((p) => status(p) === 'Open' && !(String(opt(p.id)!.id) in v)).slice(0, 5);
+      for (const p of todo) {
+        const id = opt(p.id)!.id;
+        const r = await fetchExplain(id).catch(() => null);
+        if (stop) return;
+        if (r?.data) setVerdicts((cur) => ({ ...cur, [String(id)]: { consistency: r.data.consistency, risks: r.data.risks.length } }));
+      }
+    })();
+    return () => {
+      stop = true;
+    };
+  }, [items]);
+
   const isMirror = (p: ProposalData) => {
     const g = genericCall(p);
     return !!g && isNnsMirror(fns?.get(g.function_id));
@@ -93,7 +118,7 @@ export function Proposals({ go }: { go: (h: string) => void }) {
 
       <Card className="divide-y divide-line overflow-hidden">
         {shown.map((p, i) => (
-          <Row key={String(opt(p.id)?.id)} p={p} fns={fns} i={i} onOpen={() => go(`#/proposal/${opt(p.id)?.id}`)} />
+          <Row key={String(opt(p.id)?.id)} p={p} fns={fns} i={i} v={verdicts[String(opt(p.id)?.id)]} onOpen={() => go(`#/proposal/${opt(p.id)?.id}`)} />
         ))}
         {loading &&
           Array.from({ length: items.length ? 2 : 6 }, (_, i) => (
@@ -114,7 +139,7 @@ export function Proposals({ go }: { go: (h: string) => void }) {
   );
 }
 
-function Row({ p, fns, i, onOpen }: { p: ProposalData; fns?: Map<bigint, Fn>; i: number; onOpen: () => void }) {
+function Row({ p, fns, i, v, onOpen }: { p: ProposalData; fns?: Map<bigint, Fn>; i: number; v?: Verdict; onOpen: () => void }) {
   const id = opt(p.id)?.id;
   const s = status(p);
   const t = opt(p.latest_tally);
@@ -142,6 +167,12 @@ function Row({ p, fns, i, onOpen }: { p: ProposalData; fns?: Map<bigint, Fn>; i:
             <Badge tone={statusTone(s)}>{s}</Badge>
             <Badge>{fn ? fn.name : humanize(actionKey(p))}</Badge>
             {fn?.method && <Badge className="font-mono">{fn.method}</Badge>}
+            {v && <Badge tone={verdictInfo[v.consistency]?.tone ?? 'warn'}>{verdictInfo[v.consistency]?.label ?? v.consistency}</Badge>}
+            {v && v.risks > 0 && (
+              <Badge tone="no">
+                <AlertTriangle className="size-3" /> {v.risks} risk{v.risks > 1 ? 's' : ''}
+              </Badge>
+            )}
             {s === 'Open' && (
               <span className="inline-flex items-center gap-1 text-[11px] text-muted">
                 <Clock className="size-3" />

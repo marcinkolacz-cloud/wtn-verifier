@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import { AlertTriangle, CheckCircle2, Cpu, Info, ListChecks, Sparkles, XCircle } from 'lucide-react';
 import { EXPLAIN_URL } from '../lib/ic';
+import { fetchExplain } from '../lib/explain';
 import { Button, Card, CardHeader, ErrorBox, Spinner, cx } from './ui';
 
 type Data = {
@@ -23,7 +24,7 @@ const tone = {
 const iconTone = { neutral: 'text-muted', accent: 'text-accent', yes: 'text-yes', warn: 'text-warn', no: 'text-no' } as const;
 
 function Block({ t, icon: Icon, title, items }: { t: keyof typeof tone; icon: typeof Info; title: ReactNode; items: string[] }) {
-  if (!items?.length) return null;
+  if (!Array.isArray(items) || !items.length) return null;
   return (
     <div className={cx('rounded-lg border p-3.5', tone[t])}>
       <div className={cx('mb-1.5 flex items-center gap-2 text-xs font-semibold', iconTone[t])}>
@@ -48,7 +49,7 @@ const verdict = {
   mismatch: { t: 'no', icon: XCircle, label: 'Summary contradicts the on-chain action' },
 } as const;
 
-export function Explain({ id }: { id: bigint }) {
+export function Explain({ id, onDone }: { id: bigint; onDone?: () => void }) {
   const [res, setRes] = useState<Res>();
   const [error, setError] = useState<unknown>();
   const [loading, setLoading] = useState(false);
@@ -60,10 +61,8 @@ export function Explain({ id }: { id: bigint }) {
     setError(undefined);
     setRes(undefined);
     try {
-      const r = await fetch(`${EXPLAIN_URL!.replace(/\/$/, '')}/explain?id=${id}&lang=en`);
-      const j = await r.json();
-      if (!r.ok) throw new Error(j.error ?? `HTTP ${r.status}`);
-      setRes(j);
+      setRes(await fetchExplain(id));
+      onDone?.();
     } catch (e) {
       setError(e);
     } finally {
@@ -73,6 +72,7 @@ export function Explain({ id }: { id: bigint }) {
 
   const d = res?.data;
   const v = d && (verdict[d.consistency] ?? verdict.partial);
+  const txt = res && !d ? (typeof res.text === 'string' ? res.text : JSON.stringify(res.text)) : '';
 
   return (
     <Card>
@@ -104,7 +104,7 @@ export function Explain({ id }: { id: bigint }) {
               <Block t="warn" icon={ListChecks} title="Check before voting" items={d.checks} />
             </>
           )}
-          {res && !d && <div className="whitespace-pre-wrap text-sm leading-relaxed text-fg/90">{res.text}</div>}
+          {txt && <div className="whitespace-pre-wrap text-sm leading-relaxed text-fg/90">{txt}</div>}
           {res && (
             <div className="text-[11px] text-muted">
               {res.model.split('/').pop()} · {res.cached ? 'cached' : 'fresh'} · {new Date(res.created).toLocaleString('en-GB')}

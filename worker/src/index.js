@@ -2,7 +2,7 @@ import { Actor, HttpAgent } from '@icp-sdk/core/agent';
 import { idlFactory } from '../../src/declarations/sns_governance.idl.js';
 
 const GOV = 'jfnic-kaaaa-aaaaq-aadla-cai';
-const VERSION = 'v2';
+const VERSION = 'v3';
 const LANGS = { en: 'English' };
 const ORIGINS = [/^http:\/\/localhost(:\d+)?$/, /^http:\/\/127\.0\.0\.1(:\d+)?$/, /^https:\/\/[a-z0-9-]+\.(icp0\.io|ic0\.app)$/];
 
@@ -79,6 +79,15 @@ export default {
     const origin = req.headers.get('Origin');
     const url = new URL(req.url);
     if (req.method === 'OPTIONS') return new Response(null, { headers: { ...cors(origin), 'Access-Control-Allow-Methods': 'GET' } });
+    if (url.pathname === '/verdicts' && req.method === 'GET') {
+      const ids = (url.searchParams.get('ids') ?? '').split(',').filter((x) => /^\d{1,9}$/.test(x)).slice(0, 60);
+      const rows = await Promise.all(ids.map((id) => env.EXPLAIN.get(`${VERSION}:${id}:en`, 'json')));
+      const out = {};
+      rows.forEach((r, i) => {
+        if (r?.data) out[ids[i]] = { consistency: r.data.consistency, risks: r.data.risks.length };
+      });
+      return json(out, 200, origin, { 'Cache-Control': 'no-store' });
+    }
     if (url.pathname !== '/explain' || req.method !== 'GET') return json({ error: 'not found' }, 404, origin);
 
     const idStr = url.searchParams.get('id') ?? '';
@@ -94,40 +103,50 @@ export default {
     if (!p) return json({ error: 'proposal not found' }, 404, origin);
     if (p.error) return json({ error: `IC query failed: ${p.error}` }, 502, origin);
 
+    const schema = {
+      type: 'object',
+      properties: {
+        does: { type: 'array', items: { type: 'string' } },
+        onchain: { type: 'array', items: { type: 'string' } },
+        consistency: { type: 'string', enum: ['match', 'partial', 'mismatch'] },
+        consistency_notes: { type: 'array', items: { type: 'string' } },
+        risks: { type: 'array', items: { type: 'string' } },
+        checks: { type: 'array', items: { type: 'string' } },
+      },
+      required: ['does', 'onchain', 'consistency', 'consistency_notes', 'risks', 'checks'],
+    };
+    const base = { messages: prompt(p, lang), max_tokens: 1000, temperature: 0.2 };
     let out;
     try {
-      out = await env.AI.run(env.MODEL, {
-        messages: prompt(p, lang),
-        max_tokens: 900,
-        temperature: 0.2,
-        response_format: {
-          type: 'json_schema',
-          json_schema: {
-            type: 'object',
-            properties: {
-              does: { type: 'array', items: { type: 'string' } },
-              onchain: { type: 'array', items: { type: 'string' } },
-              consistency: { type: 'string', enum: ['match', 'partial', 'mismatch'] },
-              consistency_notes: { type: 'array', items: { type: 'string' } },
-              risks: { type: 'array', items: { type: 'string' } },
-              checks: { type: 'array', items: { type: 'string' } },
-            },
-            required: ['does', 'onchain', 'consistency', 'consistency_notes', 'risks', 'checks'],
-          },
-        },
-      });
+      // JSON mode first; some models reject response_format, so retry with prompt-only JSON
+      out = await env.AI.run(env.MODEL, { ...base, response_format: { type: 'json_schema', json_schema: schema } }).catch(
+        () => env.AI.run(env.MODEL, base),
+      );
     } catch (e) {
       return json({ error: `AI failed: ${e?.message ?? e}` }, 502, origin);
     }
     const raw = out?.response ?? out;
-    let data = null;
-    if (raw && typeof raw === 'object') data = raw;
-    else if (typeof raw === 'string') {
+    let parsed = null;
+    if (raw && typeof raw === 'object' && !Array.isArray(raw)) parsed = raw;
+    else if (typeof raw === 'string' && raw.includes('{')) {
       try {
-        data = JSON.parse(raw.slice(raw.indexOf('{'), raw.lastIndexOf('}') + 1));
+        parsed = JSON.parse(raw.slice(raw.indexOf('{'), raw.lastIndexOf('}') + 1));
       } catch {}
     }
-    const text = data ? '' : String(raw ?? '');
+    const list = (v) => (Array.isArray(v) ? v.map(String).filter(Boolean) : typeof v === 'string' && v ? [v] : []);
+    const data =
+      parsed && (parsed.does || parsed.onchain)
+        ? {
+            does: list(parsed.does),
+            onchain: list(parsed.onchain),
+            consistency: ['match', 'partial', 'mismatch'].includes(parsed.consistency) ? parsed.consistency : 'partial',
+            consistency_notes: list(parsed.consistency_notes),
+            risks: list(parsed.risks),
+            checks: list(parsed.checks),
+          }
+        : null;
+    if (!data && !(typeof raw === 'string' && raw.trim())) return json({ error: 'AI returned an empty answer' }, 502, origin);
+    const text = data ? '' : String(raw);
     const body = { id: idStr, lang, model: env.MODEL, data, text, created: new Date().toISOString() };
     ctx.waitUntil(env.EXPLAIN.put(key, JSON.stringify(body)));
     return json({ ...body, cached: false }, 200, origin);
