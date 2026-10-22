@@ -2,7 +2,7 @@ import { Actor, HttpAgent } from '@icp-sdk/core/agent';
 import { idlFactory } from '../../src/declarations/sns_governance.idl.js';
 
 const GOV = 'jfnic-kaaaa-aaaaq-aadla-cai';
-const VERSION = 'v3';
+const VERSION = 'v4';
 const LANGS = { en: 'English' };
 const ORIGINS = [/^http:\/\/localhost(:\d+)?$/, /^http:\/\/127\.0\.0\.1(:\d+)?$/, /^https:\/\/[a-z0-9-]+\.(icp0\.io|ic0\.app)$/];
 
@@ -53,15 +53,20 @@ function prompt(p, lang) {
     {
       role: 'system',
       content:
-        `You explain WaterNeuron SNS DAO governance proposals to token holders who are not developers. ` +
-        `Answer in ${LANGS[lang]}. Be concise and factual; each bullet one short sentence. ` +
+        `You explain WaterNeuron DAO proposals to ordinary WTN and nICP holders who are NOT developers. ` +
+        `Write in simple, friendly ${LANGS[lang]}, like explaining to a friend. Each bullet is one short sentence. ` +
+        `Avoid jargon. Do not mention method names, canister IDs, payloads, PRs, commits or code. ` +
+        `If a technical term is unavoidable (for example "dissolve delay" or "neuron"), explain it in a few words in brackets. ` +
+        `Focus on what it means for holders: their nICP, withdrawals, rewards, the treasury and the DAO's control. ` +
+        `Never tell people to read code, pull requests or GitHub. ` +
         `Return ONLY a JSON object with keys: ` +
         `"does": 2-4 bullets on what the proposal does; ` +
         `"onchain": 1-3 bullets on what actually changes on-chain, based ONLY on the action type and decoded payload; ` +
         `"consistency": "match" if the summary matches the action/payload, "partial" if the summary makes claims the payload cannot confirm, "mismatch" if they contradict; ` +
         `"consistency_notes": 1-3 bullets explaining the consistency verdict; ` +
         `"risks": 0-3 bullets on concrete risks or irreversible effects (empty if none); ` +
-        `"checks": 1-3 bullets on what to verify before voting. ` +
+        `"checks": 1-3 bullets on simple things a holder can check without technical skills ` +
+        `(e.g. was it discussed on the forum or Discord, is the proposer known, does the voting look healthy). ` +
         `Never invent facts; say "unclear" when unsure. No voting recommendation.`,
     },
     {

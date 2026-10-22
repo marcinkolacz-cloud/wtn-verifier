@@ -10,7 +10,8 @@ import { compact, date, hex, humanize, icp, opt, pct, relative, sha256, short, v
 import { useAsync } from '../lib/useAsync';
 import { Badge, Button, Card, CardHeader, CopyButton, Empty, ErrorBox, Ext, Mono, Skeleton, Spinner, VoteBar } from '../components/ui';
 import { proposalReport } from '../lib/report';
-import { Explain } from '../components/Explain';
+import { Explain, useExplain, verdictOf } from '../components/Explain';
+import { Flags } from '../components/Flags';
 import { statusTone } from './Proposals';
 
 export function ProposalDetail({ id, go }: { id: bigint; go: (h: string) => void }) {
@@ -41,6 +42,7 @@ function Body({ p, fns }: { p: ProposalData; fns?: Map<bigint, Fn> }) {
   const prop = opt(p.proposal);
   const topic = variantKey(opt(p.topic));
   const proposer = opt(p.proposer);
+  const ex = useExplain(id);
 
   return (
     <>
@@ -64,7 +66,13 @@ function Body({ p, fns }: { p: ProposalData; fns?: Map<bigint, Fn> }) {
         </div>
       </div>
 
-      <Explain id={id} />
+      <Card>
+        <CardHeader title="At a glance" sub="Automatic checks — red needs attention, orange be careful, green looks fine" />
+        <div className="px-5 py-4">
+          <Flags p={p} verdict={verdictOf(ex)} />
+        </div>
+      </Card>
+      <Explain st={ex} />
       <ActionPanel p={p} fns={fns} />
       <Voting p={p} />
 

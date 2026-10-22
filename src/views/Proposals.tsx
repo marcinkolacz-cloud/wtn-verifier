@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { fetchExplain, fetchVerdicts, verdictInfo, type Verdict } from '../lib/explain';
 import { AlertTriangle } from 'lucide-react';
-import { motion } from 'framer-motion';
+import { AnimatePresence, motion } from 'framer-motion';
+import { ProposalModal } from '../components/ProposalModal';
 import { ChevronRight, Clock, Sparkles } from 'lucide-react';
 import type { ProposalData } from '../declarations/sns_governance';
 import { actionKey, deadline, functions, genericCall, isNnsMirror, listProposals, mirrorIds, status, type Fn, type Status } from '../lib/data';
@@ -19,6 +20,7 @@ export function Proposals({ go }: { go: (h: string) => void }) {
   const [done, setDone] = useState(false);
   const [filter, setFilter] = useState<'all' | 'open'>('all');
   const [verdicts, setVerdicts] = useState<Record<string, Verdict>>({});
+  const [modal, setModal] = useState<ProposalData>();
   const [hideMirror, setHideMirror] = useState(() => {
     try {
       return localStorage.getItem('hide-mirror') !== '0';
@@ -118,7 +120,7 @@ export function Proposals({ go }: { go: (h: string) => void }) {
 
       <Card className="divide-y divide-line overflow-hidden">
         {shown.map((p, i) => (
-          <Row key={String(opt(p.id)?.id)} p={p} fns={fns} i={i} v={verdicts[String(opt(p.id)?.id)]} onOpen={() => go(`#/proposal/${opt(p.id)?.id}`)} />
+          <Row key={String(opt(p.id)?.id)} p={p} fns={fns} i={i} v={verdicts[String(opt(p.id)?.id)]} onOpen={() => setModal(p)} />
         ))}
         {loading &&
           Array.from({ length: items.length ? 2 : 6 }, (_, i) => (
@@ -135,6 +137,17 @@ export function Proposals({ go }: { go: (h: string) => void }) {
           <Button onClick={() => load(last)}>Load older</Button>
         </div>
       )}
+
+      <AnimatePresence>
+        {modal && (
+          <ProposalModal
+            key={String(opt(modal.id)?.id)}
+            p={modal}
+            onClose={() => setModal(undefined)}
+            onOpen={() => go(`#/proposal/${opt(modal.id)?.id}`)}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }
