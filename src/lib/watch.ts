@@ -1,4 +1,4 @@
-import { functions, genericCall, isNnsMirror, listProposals, nnsNeuron, openWithdrawals, resetWithdrawals, wnInfo } from './data';
+import { functions, mirrorIds, listProposals, nnsNeuron, openWithdrawals, resetWithdrawals, wnInfo } from './data';
 import { DAY, opt } from './format';
 
 export const INTERVAL_MS = 5 * 60_000;
@@ -43,14 +43,12 @@ function notify(a: Alert) {
 
 async function snapshot(): Promise<Snap> {
   resetWithdrawals();
-  const [info, ps, fns] = await Promise.all([wnInfo(), listProposals(undefined, 20), functions()]);
+  const fns = await functions();
+  const [info, ps] = await Promise.all([wnInfo(), listProposals(undefined, 1, mirrorIds(fns))]);
   const id6 = opt(info.neuron_id_6m)?.id;
   const [n6, rows] = await Promise.all([id6 !== undefined ? nnsNeuron(id6) : null, openWithdrawals()]);
   const mainDelay = Number(n6?.dissolve_delay_seconds ?? 0n);
-  const latest = ps.find((p) => {
-    const g = genericCall(p);
-    return !(g && isNnsMirror(fns.get(g.function_id)));
-  });
+  const latest = ps[0];
   return {
     mainDelay,
     mainState: n6?.state ?? 0,

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { ChevronRight, Clock } from 'lucide-react';
 import type { ProposalData } from '../declarations/sns_governance';
-import { actionKey, deadline, functions, genericCall, isNnsMirror, listProposals, status, type Fn, type Status } from '../lib/data';
+import { actionKey, deadline, functions, genericCall, isNnsMirror, listProposals, mirrorIds, status, type Fn, type Status } from '../lib/data';
 import { humanize, opt, pct, relative } from '../lib/format';
 import { Badge, Button, Card, ErrorBox, Skeleton, VoteBar } from '../components/ui';
 
@@ -24,19 +24,24 @@ export function Proposals({ go }: { go: (h: string) => void }) {
     }
   });
   const toggleMirror = () => {
-    setHideMirror((h) => {
-      try {
-        localStorage.setItem('hide-mirror', h ? '0' : '1');
-      } catch {}
-      return !h;
-    });
+    const next = !hideMirror;
+    setHideMirror(next);
+    try {
+      localStorage.setItem('hide-mirror', next ? '1' : '0');
+    } catch {}
+    load(undefined, next);
   };
 
-  const load = async (before?: bigint) => {
+  const load = async (before?: bigint, hide = hideMirror) => {
     setLoading(true);
     setError(undefined);
+    if (before === undefined) {
+      setItems([]);
+      setDone(false);
+    }
     try {
-      const [ps, f] = await Promise.all([listProposals(before), functions()]);
+      const f = await functions();
+      const ps = await listProposals(before, 30, hide ? mirrorIds(f) : []);
       setFns(f);
       setItems((cur) => (before === undefined ? ps : [...cur, ...ps]));
       if (ps.length < 30) setDone(true);
@@ -55,7 +60,6 @@ export function Proposals({ go }: { go: (h: string) => void }) {
     const g = genericCall(p);
     return !!g && isNnsMirror(fns?.get(g.function_id));
   };
-  const hidden = hideMirror ? items.filter(isMirror).length : 0;
   const shown = items.filter((p) => (filter === 'all' || status(p) === 'Open') && !(hideMirror && isMirror(p)));
   const last = opt(items[items.length - 1]?.id ?? [])?.id;
 
@@ -69,7 +73,7 @@ export function Proposals({ go }: { go: (h: string) => void }) {
         <div className="flex items-center gap-2">
         <label className="flex cursor-pointer items-center gap-1.5 text-xs text-muted select-none">
           <input type="checkbox" checked={hideMirror} onChange={toggleMirror} className="accent-current" />
-          Hide NNS votes{hidden ? ` (${hidden})` : ''}
+          Hide NNS votes
         </label>
         <div className="flex rounded-lg border border-line bg-panel p-0.5 text-xs">
           {(['all', 'open'] as const).map((f) => (
@@ -98,7 +102,7 @@ export function Proposals({ go }: { go: (h: string) => void }) {
               <Skeleton className="h-1.5 w-full" />
             </div>
           ))}
-        {!loading && !shown.length && <div className="px-5 py-10 text-center text-sm text-muted">{hidden ? 'Only NNS votes here — load older' : 'No proposals'}</div>}
+        {!loading && !shown.length && <div className="px-5 py-10 text-center text-sm text-muted">No proposals</div>}
       </Card>
 
       {!done && !loading && items.length > 0 && (

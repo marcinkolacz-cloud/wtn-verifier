@@ -29,11 +29,13 @@ export const functions = () =>
     return m;
   })());
 
-export async function listProposals(before?: bigint, limit = 30) {
+export const mirrorIds = (fns: Map<bigint, Fn>) => [...fns.values()].filter(isNnsMirror).map((f) => f.id);
+
+export async function listProposals(before?: bigint, limit = 30, exclude: bigint[] = []) {
   const r = await (await snsGov()).list_proposals({
     limit,
     before_proposal: before === undefined ? [] : [{ id: before }],
-    exclude_type: new BigUint64Array(),
+    exclude_type: BigUint64Array.from(exclude),
     include_reward_status: new Int32Array(),
     include_status: new Int32Array(),
     include_topics: [],
