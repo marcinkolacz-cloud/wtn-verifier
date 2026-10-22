@@ -27,3 +27,6 @@ export const snsGov = () => make<SnsGov>(snsGovIdl, IDS.wtnGovernance);
 export const snsRoot = () => make<SnsRoot>(snsRootIdl, IDS.wtnRoot);
 export const nnsGov = () => make<NnsGov>(nnsGovIdl, IDS.nnsGovernance);
 export const waterNeuron = () => make<WaterNeuron>(wnIdl, IDS.waterNeuron);
+
+/** repo where .github/workflows/build-wtn.yml publishes builds/<commit>.json */
+export const BUILDS_REPO = 'marcinkolacz-cloud/wtn-verifier';

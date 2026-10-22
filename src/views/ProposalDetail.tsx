@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, CheckCircle2, Code2, FileCode, Hash, Scale, XCircle } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, CircleDashed, Code2, FileCode, Hash, Scale, ShieldCheck, XCircle } from 'lucide-react';
 import type { ProposalData } from '../declarations/sns_governance';
 import {
-  actionKey, breakdown, canisterHealth, codeSearchUrl, dashboardUrl, deadline, earlyDecision, ENTITIES, functions,
+  actionKey, breakdown, buildDispatchUrl, canisterHealth, canisterName, fetchBuild, summaryClaims, codeSearchUrl, dashboardUrl, deadline, earlyDecision, ENTITIES, functions,
   genericCall, getProposal, loadLabels, neuronControllers, rules, saveLabel, status, upgradeCall, wouldPass,
   type Entity, type Fn,
 } from '../lib/data';
@@ -165,12 +165,10 @@ function ActionPanel({ p, fns }: { p: ProposalData; fns?: Map<bigint, Fn> }) {
             <KV k="Upgrade arg">
               <Mono className="text-muted">{arg ? `${arg.length} bytes · ${short(hex(arg), 12)}` : 'none'}</Mono>
             </KV>
-            <KV k="Reproducible build">
-              <span className="text-muted">Compare the new hash with a Nix build of the tagged release (v2).</span>
-            </KV>
           </>
         )}
       </div>
+      {u && <UpgradeVerify p={p} wasmHash={wasmHash} target={target} arg={arg} running={health?.moduleHash} />}
       {rendering && (
         <div className="border-t border-line px-5 py-4">
           <div className="mb-2 text-xs text-muted">Decoded payload (validator rendering)</div>
@@ -180,6 +178,100 @@ function ActionPanel({ p, fns }: { p: ProposalData; fns?: Map<bigint, Fn> }) {
         </div>
       )}
     </Card>
+  );
+}
+
+/* ---------------- reproducible build ---------------- */
+
+type Check = { label: string; state: 'ok' | 'fail' | 'na'; detail: React.ReactNode };
+
+function UpgradeVerify({
+  p, wasmHash, target, arg, running,
+}: { p: ProposalData; wasmHash?: string; target?: string; arg?: Uint8Array; running?: string }) {
+  const summary = opt(p.proposal)?.summary ?? '';
+  const claims = useMemo(() => summaryClaims(summary), [summary]);
+  const name = canisterName(target);
+  const [argHash, setArgHash] = useState<string>();
+  const { data: build, error, loading, reload } = useAsync(
+    async () => (claims.commit ? fetchBuild(claims.commit) : null),
+    [claims.commit],
+  );
+
+  useEffect(() => {
+    if (arg?.length) sha256(arg).then(setArgHash);
+  }, [arg]);
+
+  const built = name && build ? build.wasms[name] : undefined;
+  const checks: Check[] = [
+    {
+      label: 'Source commit in summary',
+      state: claims.commit ? 'ok' : 'fail',
+      detail: claims.commit ? (
+        <Ext href={`https://github.com/WaterNeuron/WaterNeuron/commit/${claims.commit}`}>
+          <Mono>{claims.commit.slice(0, 12)}</Mono>
+        </Ext>
+      ) : (
+        'No 40-char commit found — wasm cannot be traced to source'
+      ),
+    },
+    {
+      label: 'Independent Nix build',
+      state: !wasmHash || !claims.commit || !name ? 'na' : !build ? 'na' : built === wasmHash ? 'ok' : 'fail',
+      detail: !name ? (
+        'Unknown target canister'
+      ) : !claims.commit ? (
+        '—'
+      ) : loading ? (
+        'Checking…'
+      ) : error ? (
+        <span>Fetch failed · <button className="underline" onClick={reload}>retry</button></span>
+      ) : !build ? (
+        <span>
+          Not built yet · <Ext href={buildDispatchUrl()}>run workflow</Ext> with commit <Mono>{claims.commit.slice(0, 12)}</Mono>
+        </span>
+      ) : (
+        <span>
+          <Mono>{built ? short(built, 10) : `no ${name} artifact`}</Mono> · <Ext href={build.run_url}>CI run</Ext>
+        </span>
+      ),
+    },
+    {
+      label: 'Hash stated in summary',
+      state: !wasmHash ? 'na' : claims.hashes.includes(wasmHash) ? 'ok' : 'fail',
+      detail: !wasmHash ? 'On-chain wasm not available' : claims.hashes.includes(wasmHash) ? 'Matches on-chain wasm' : 'Summary does not mention the on-chain wasm hash',
+    },
+    {
+      label: 'Upgrade arg hash',
+      state: !argHash ? 'na' : claims.hashes.includes(argHash) ? 'ok' : 'fail',
+      detail: !arg?.length ? 'No upgrade arg' : <Mono>{argHash ? short(argHash, 10) : '…'}</Mono>,
+    },
+    {
+      label: 'Running module',
+      state: !running || !wasmHash ? 'na' : running === wasmHash ? 'ok' : 'na',
+      detail: !running || !wasmHash ? '—' : running === wasmHash ? 'Canister already runs this wasm' : 'Differs (expected before execution)',
+    },
+  ];
+
+  const icon = (s: Check['state']) =>
+    s === 'ok' ? <CheckCircle2 className="size-4 text-yes" /> : s === 'fail' ? <XCircle className="size-4 text-no" /> : <CircleDashed className="size-4 text-muted" />;
+  const verified = checks[1].state === 'ok';
+
+  return (
+    <div className="border-t border-line px-5 py-4">
+      <div className="mb-3 flex items-center gap-2 text-xs">
+        <ShieldCheck className={`size-4 ${verified ? 'text-yes' : 'text-muted'}`} />
+        <span className="font-medium">{verified ? 'Wasm reproduced from source' : 'Build verification'}</span>
+      </div>
+      <div className="space-y-2">
+        {checks.map((c) => (
+          <div key={c.label} className="flex items-start gap-2.5 text-sm">
+            <span className="mt-0.5">{icon(c.state)}</span>
+            <span className="w-44 shrink-0 text-muted max-sm:w-32">{c.label}</span>
+            <span className="min-w-0 break-all">{c.detail}</span>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 

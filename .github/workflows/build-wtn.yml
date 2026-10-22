@@ -1,0 +1,71 @@
+name: Reproducible WaterNeuron build
+
+on:
+  workflow_dispatch:
+    inputs:
+      commit:
+        description: WaterNeuron/WaterNeuron commit (full 40-char sha)
+        required: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-wtn
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Validate input
+        run: echo "${{ inputs.commit }}" | grep -Eq '^[0-9a-f]{40}$'
+
+      - uses: actions/checkout@v4
+
+      - name: Checkout WaterNeuron
+        uses: actions/checkout@v4
+        with:
+          repository: WaterNeuron/WaterNeuron
+          ref: ${{ inputs.commit }}
+          path: wn
+
+      - uses: DeterminateSystems/nix-installer-action@main
+
+      - name: Build with Nix
+        working-directory: wn
+        run: ./build.sh
+
+      - name: Write hashes
+        env:
+          COMMIT: ${{ inputs.commit }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          cd wn/artifacts
+          sha256sum *.wasm.gz | tee ../../hashes.txt
+          cd ../..
+          python3 - << 'PY'
+          import json, os, datetime
+          wasms = {}
+          for line in open('hashes.txt'):
+              h, name = line.split()
+              wasms[name.replace('.wasm.gz', '')] = h
+          out = {
+              'commit': os.environ['COMMIT'],
+              'built_at': datetime.datetime.utcnow().replace(microsecond=0).isoformat() + 'Z',
+              'run_url': os.environ['RUN_URL'],
+              'runner': 'ubuntu-22.04 + nix',
+              'wasms': wasms,
+          }
+          os.makedirs('builds', exist_ok=True)
+          json.dump(out, open(f"builds/{os.environ['COMMIT']}.json", 'w'), indent=2)
+          PY
+
+      - name: Commit result
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add builds/
+          git commit -m "build: WaterNeuron ${{ inputs.commit }}" || exit 0
+          git pull --rebase
+          git push

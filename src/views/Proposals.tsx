@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { ChevronRight, Clock } from 'lucide-react';
 import type { ProposalData } from '../declarations/sns_governance';
-import { actionKey, deadline, functions, genericCall, listProposals, status, type Fn, type Status } from '../lib/data';
+import { actionKey, deadline, functions, genericCall, isNnsMirror, listProposals, status, type Fn, type Status } from '../lib/data';
 import { humanize, opt, pct, relative } from '../lib/format';
 import { Badge, Button, Card, ErrorBox, Skeleton, VoteBar } from '../components/ui';
 
@@ -16,6 +16,21 @@ export function Proposals({ go }: { go: (h: string) => void }) {
   const [error, setError] = useState<unknown>();
   const [done, setDone] = useState(false);
   const [filter, setFilter] = useState<'all' | 'open'>('all');
+  const [hideMirror, setHideMirror] = useState(() => {
+    try {
+      return localStorage.getItem('hide-mirror') !== '0';
+    } catch {
+      return true;
+    }
+  });
+  const toggleMirror = () => {
+    setHideMirror((h) => {
+      try {
+        localStorage.setItem('hide-mirror', h ? '0' : '1');
+      } catch {}
+      return !h;
+    });
+  };
 
   const load = async (before?: bigint) => {
     setLoading(true);
@@ -36,7 +51,12 @@ export function Proposals({ go }: { go: (h: string) => void }) {
     load();
   }, []);
 
-  const shown = items.filter((p) => filter === 'all' || status(p) === 'Open');
+  const isMirror = (p: ProposalData) => {
+    const g = genericCall(p);
+    return !!g && isNnsMirror(fns?.get(g.function_id));
+  };
+  const hidden = hideMirror ? items.filter(isMirror).length : 0;
+  const shown = items.filter((p) => (filter === 'all' || status(p) === 'Open') && !(hideMirror && isMirror(p)));
   const last = opt(items[items.length - 1]?.id ?? [])?.id;
 
   return (
@@ -46,6 +66,11 @@ export function Proposals({ go }: { go: (h: string) => void }) {
           <h1 className="text-lg font-semibold tracking-tight">Proposals</h1>
           <p className="text-sm text-muted">WaterNeuron SNS · read directly from governance</p>
         </div>
+        <div className="flex items-center gap-2">
+        <label className="flex cursor-pointer items-center gap-1.5 text-xs text-muted select-none">
+          <input type="checkbox" checked={hideMirror} onChange={toggleMirror} className="accent-current" />
+          Hide NNS votes{hidden ? ` (${hidden})` : ''}
+        </label>
         <div className="flex rounded-lg border border-line bg-panel p-0.5 text-xs">
           {(['all', 'open'] as const).map((f) => (
             <button
@@ -56,6 +81,7 @@ export function Proposals({ go }: { go: (h: string) => void }) {
               {f}
             </button>
           ))}
+        </div>
         </div>
       </div>
 
@@ -72,7 +98,7 @@ export function Proposals({ go }: { go: (h: string) => void }) {
               <Skeleton className="h-1.5 w-full" />
             </div>
           ))}
-        {!loading && !shown.length && <div className="px-5 py-10 text-center text-sm text-muted">No proposals</div>}
+        {!loading && !shown.length && <div className="px-5 py-10 text-center text-sm text-muted">{hidden ? 'Only NNS votes here — load older' : 'No proposals'}</div>}
       </Card>
 
       {!done && !loading && items.length > 0 && (

@@ -1,5 +1,5 @@
 import { Principal } from '@icp-sdk/core/principal';
-import { IDS, nnsGov, snsGov, snsRoot, waterNeuron } from './ic';
+import { BUILDS_REPO, IDS, nnsGov, snsGov, snsRoot, waterNeuron } from './ic';
 import { hex, opt, pool, variantKey } from './format';
 import type { ProposalData, NervousSystemFunction } from '../declarations/sns_governance';
 import type { NeuronInfo } from '../declarations/nns_governance';
@@ -285,3 +285,27 @@ export async function withdrawalById(id: bigint) {
   if (!w) w = (await allWithdrawals()).find((x) => x.request.withdrawal_id === id);
   return w ? enrich([w]) : [];
 }
+
+/* ---------------- reproducible build (v2) ---------------- */
+
+export type Build = { commit: string; built_at: string; run_url: string; runner: string; wasms: Record<string, string> };
+
+export const isNnsMirror = (fn?: Fn) => !!fn && /nns proposal/i.test(fn.name);
+
+export function summaryClaims(summary: string) {
+  const commits = [...new Set(summary.match(/\b[0-9a-f]{40}\b/g) ?? [])];
+  const hashes = [...new Set(summary.match(/\b[0-9a-f]{64}\b/g) ?? [])];
+  return { commit: commits[0], commits, hashes };
+}
+
+export async function fetchBuild(commit: string): Promise<Build | null> {
+  const r = await fetch(`https://raw.githubusercontent.com/${BUILDS_REPO}/main/builds/${commit}.json`, { cache: 'no-store' });
+  if (r.status === 404) return null;
+  if (!r.ok) throw new Error(`GitHub ${r.status}`);
+  return r.json();
+}
+
+export const buildDispatchUrl = () => `https://github.com/${BUILDS_REPO}/actions/workflows/build-wtn.yml`;
+
+export const canisterName = (id?: string) =>
+  id === IDS.waterNeuron ? 'water_neuron' : id === 'daijl-2yaaa-aaaar-qag3a-cai' ? 'boomerang' : id === 'uqeyr-oaaaa-aaaar-qbyyq-cai' ? 'icrc_validator' : undefined;
