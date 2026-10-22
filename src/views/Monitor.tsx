@@ -1,4 +1,5 @@
-import { useState, useSyncExternalStore } from 'react';
+import { useMemo, useState, useSyncExternalStore } from 'react';
+import { DateRange, FilterBar, inRange, NumberInput, SearchInput, Select, SortHeader, type Sort } from '../components/Filters';
 import { AlertTriangle, Activity, Bell, BellOff, RefreshCw, ShieldCheck } from 'lucide-react';
 import { buildsIndex, canisterHealth, neuronState, nnsNeuron, openWithdrawals, resetWithdrawals, wnInfo, type WRow } from '../lib/data';
 import { statusReport } from '../lib/report';
@@ -177,48 +178,123 @@ export function Monitor() {
   );
 }
 
-export function WTable({ rows, mainDelay }: { rows: WRow[]; mainDelay?: number }) {
-  const sorted = [...rows].sort(
-    (a, b) => Number(b.frozen) - Number(a.frozen) || Number(b.w.request.withdrawal_id - a.w.request.withdrawal_id),
+type WKey = 'id' | 'icp' | 'requested' | 'delay';
+const NNS_OPTS = [
+  ['all', 'NNS: all'],
+  ['frozen', 'Frozen'],
+  ['Locked', 'Locked'],
+  ['Dissolving', 'Dissolving'],
+  ['Dissolved', 'Dissolved'],
+  ['none', 'No neuron'],
+] as const;
+
+const reqSec = (r: WRow) => {
+  const t = Number(r.w.request.timestamp);
+  return t > 1e15 ? t / 1e9 : t;
+};
+
+export function WTable({ rows, mainDelay, filters = true }: { rows: WRow[]; mainDelay?: number; filters?: boolean }) {
+  const [q, setQ] = useState('');
+  const [wn, setWn] = useState('all');
+  const [nns, setNns] = useState<(typeof NNS_OPTS)[number][0]>('all');
+  const [minIcp, setMinIcp] = useState('');
+  const [minDelay, setMinDelay] = useState('');
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
+  const [sort, setSort] = useState<Sort<WKey>>({ key: 'id', dir: 'desc' });
+
+  const wnOpts = useMemo(
+    () => [['all', 'WaterNeuron: all'] as const, ...[...new Set(rows.map((r) => r.status))].map((s) => [s, humanize(s)] as const)],
+    [rows],
   );
+  const active = [q, wn !== 'all', nns !== 'all', minIcp, minDelay, from, to].filter(Boolean).length;
+  const clear = () => {
+    setQ(''); setWn('all'); setNns('all'); setMinIcp(''); setMinDelay(''); setFrom(''); setTo('');
+  };
+
+  const shown = useMemo(() => {
+    const needle = q.trim().replace(/^#/, '');
+    const out = rows.filter((r) => {
+      if (needle && !String(r.w.request.withdrawal_id).includes(needle) && !String(r.neuronId ?? '').includes(needle)) return false;
+      if (wn !== 'all' && r.status !== wn) return false;
+      if (nns === 'frozen' && !r.frozen) return false;
+      if (nns === 'none' && r.nns) return false;
+      if (!['all', 'frozen', 'none'].includes(nns) && (r.frozen || !r.nns || neuronState(r.nns.state) !== nns)) return false;
+      if (minIcp && Number(r.w.request.icp_due) / 1e8 < Number(minIcp)) return false;
+      if (minDelay && Number(r.nns?.dissolve_delay_seconds ?? 0n) / DAY < Number(minDelay)) return false;
+      if ((from || to) && !inRange(reqSec(r), from, to)) return false;
+      return true;
+    });
+    const val = (r: WRow) =>
+      sort.key === 'id' ? Number(r.w.request.withdrawal_id)
+      : sort.key === 'icp' ? Number(r.w.request.icp_due)
+      : sort.key === 'requested' ? reqSec(r)
+      : Number(r.nns?.dissolve_delay_seconds ?? -1n);
+    return out.sort((a, b) => (sort.dir === 'asc' ? val(a) - val(b) : val(b) - val(a)));
+  }, [rows, q, wn, nns, minIcp, minDelay, from, to, sort]);
+
+  const total = shown.reduce((s, r) => s + r.w.request.icp_due, 0n);
+
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="border-b border-line text-left text-xs text-muted">
-            <th className="px-5 py-2 font-medium">ID</th>
-            <th className="px-3 py-2 font-medium">ICP due</th>
-            <th className="px-3 py-2 font-medium">WaterNeuron</th>
-            <th className="px-3 py-2 font-medium">NNS</th>
-            <th className="px-3 py-2 text-right font-medium">Delay</th>
-            <th className="px-5 py-2 font-medium">Neuron</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-line">
-          {sorted.map((r) => {
-            const delay = Number(r.nns?.dissolve_delay_seconds ?? 0n);
-            const over = mainDelay !== undefined && r.nns?.state === 1 && delay > mainDelay;
-            return (
-              <tr key={String(r.w.request.withdrawal_id)} className={r.frozen ? 'bg-warn/[0.04]' : ''}>
-                <td className="tabular px-5 py-2 font-mono text-xs">#{String(r.w.request.withdrawal_id)}</td>
-                <td className="tabular px-3 py-2">{icp(r.w.request.icp_due)}</td>
-                <td className="px-3 py-2"><Badge>{humanize(r.status)}</Badge></td>
-                <td className="px-3 py-2">
-                  {r.nns ? (
-                    <Badge tone={r.frozen ? 'warn' : r.nns.state === 2 ? 'accent' : r.nns.state === 3 ? 'yes' : 'neutral'}>
-                      {r.frozen ? 'Frozen' : neuronState(r.nns.state)}
-                    </Badge>
-                  ) : (
-                    <span className="text-xs text-muted">—</span>
-                  )}
-                </td>
-                <td className={`tabular px-3 py-2 text-right ${over ? 'font-semibold text-warn' : ''}`}>{r.nns ? days(delay) : '—'}</td>
-                <td className="px-5 py-2 font-mono text-xs text-muted">{r.neuronId !== undefined ? String(r.neuronId) : '—'}</td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+    <div>
+      {filters && rows.length > 3 && (
+        <div className="border-b border-line p-3">
+          <FilterBar active={active} onClear={clear}>
+            <SearchInput value={q} onChange={setQ} placeholder="Withdrawal # or neuron id" />
+            <Select value={wn} onChange={setWn} options={wnOpts} label="WaterNeuron status" />
+            <Select value={nns} onChange={setNns} options={NNS_OPTS} label="NNS state" />
+            <NumberInput value={minIcp} onChange={setMinIcp} placeholder="ICP ≥" />
+            <NumberInput value={minDelay} onChange={setMinDelay} placeholder="Delay ≥ days" />
+            <DateRange from={from} to={to} onFrom={setFrom} onTo={setTo} />
+          </FilterBar>
+          <div className="mt-2 px-1 text-xs text-muted">
+            {shown.length} of {rows.length} · {icp(total, 0)} ICP
+          </div>
+        </div>
+      )}
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-line text-left text-xs text-muted">
+              <SortHeader k="id" sort={sort} onSort={setSort} className="pr-3 pl-5">ID</SortHeader>
+              <SortHeader k="requested" sort={sort} onSort={setSort} className="px-3">Requested</SortHeader>
+              <SortHeader k="icp" sort={sort} onSort={setSort} className="px-3" align="right">ICP due</SortHeader>
+              <th className="px-3 py-2 font-medium">WaterNeuron</th>
+              <th className="px-3 py-2 font-medium">NNS</th>
+              <SortHeader k="delay" sort={sort} onSort={setSort} className="px-3" align="right">Delay</SortHeader>
+              <th className="px-5 py-2 font-medium">Neuron</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-line">
+            {shown.map((r) => {
+              const delay = Number(r.nns?.dissolve_delay_seconds ?? 0n);
+              const over = mainDelay !== undefined && r.nns?.state === 1 && delay > mainDelay;
+              return (
+                <tr key={String(r.w.request.withdrawal_id)} className={r.frozen ? 'bg-warn/[0.04]' : ''}>
+                  <td className="tabular py-2 pr-3 pl-5 font-mono text-xs">#{String(r.w.request.withdrawal_id)}</td>
+                  <td className="tabular px-3 py-2 text-xs whitespace-nowrap text-muted">
+                    {reqSec(r) ? new Date(reqSec(r) * 1000).toLocaleDateString('en-GB') : '—'}
+                  </td>
+                  <td className="tabular px-3 py-2 text-right">{icp(r.w.request.icp_due)}</td>
+                  <td className="px-3 py-2"><Badge>{humanize(r.status)}</Badge></td>
+                  <td className="px-3 py-2">
+                    {r.nns ? (
+                      <Badge tone={r.frozen ? 'warn' : r.nns.state === 2 ? 'accent' : r.nns.state === 3 ? 'yes' : 'neutral'}>
+                        {r.frozen ? 'Frozen' : neuronState(r.nns.state)}
+                      </Badge>
+                    ) : (
+                      <span className="text-xs text-muted">—</span>
+                    )}
+                  </td>
+                  <td className={`tabular px-3 py-2 text-right ${over ? 'font-semibold text-warn' : ''}`}>{r.nns ? days(delay) : '—'}</td>
+                  <td className="px-5 py-2 font-mono text-xs text-muted">{r.neuronId !== undefined ? String(r.neuronId) : '—'}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+        {!shown.length && <Empty>No withdrawals match these filters</Empty>}
+      </div>
     </div>
   );
 }

@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { DateRange, FilterBar, inRange, SearchInput, Select } from '../components/Filters';
 import { fetchExplain, fetchVerdicts, verdictInfo, type Verdict } from '../lib/explain';
 import { AlertTriangle } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -19,6 +20,12 @@ export function Proposals({ go }: { go: (h: string) => void }) {
   const [error, setError] = useState<unknown>();
   const [done, setDone] = useState(false);
   const [filter, setFilter] = useState<'all' | 'open'>('all');
+  const [q, setQ] = useState('');
+  const [st, setSt] = useState<'all' | Status>('all');
+  const [typeF, setTypeF] = useState('all');
+  const [vF, setVF] = useState<'all' | 'match' | 'partial' | 'mismatch' | 'risk'>('all');
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
   const [verdicts, setVerdicts] = useState<Record<string, Verdict>>({});
   const [modal, setModal] = useState<ProposalData>();
   const [hideMirror, setHideMirror] = useState(() => {
@@ -87,8 +94,48 @@ export function Proposals({ go }: { go: (h: string) => void }) {
     const g = genericCall(p);
     return !!g && isNnsMirror(fns?.get(g.function_id));
   };
-  const shown = items.filter((p) => (filter === 'all' || status(p) === 'Open') && !(hideMirror && isMirror(p)));
+  const typeOf = (p: ProposalData) => {
+    const g = genericCall(p);
+    return (g && fns?.get(g.function_id)?.name) || humanize(actionKey(p));
+  };
+  const typeOpts = useMemo(
+    () => [['all', 'Type: all'] as const, ...[...new Set(items.map(typeOf))].sort().map((t) => [t, t] as const)],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [items, fns],
+  );
+  const active = [q, st !== 'all', typeF !== 'all', vF !== 'all', from, to].filter(Boolean).length;
+  const clear = () => {
+    setQ(''); setSt('all'); setTypeF('all'); setVF('all'); setFrom(''); setTo(''); setFilter('all');
+  };
+  const needle = q.trim().toLowerCase().replace(/^#/, '');
+  const shown = items.filter((p) => {
+    if (hideMirror && isMirror(p)) return false;
+    const s = status(p);
+    if (filter === 'open' && s !== 'Open') return false;
+    if (st !== 'all' && s !== st) return false;
+    if (typeF !== 'all' && typeOf(p) !== typeF) return false;
+    if (needle) {
+      const id = String(opt(p.id)?.id ?? '');
+      const title = (opt(p.proposal)?.title ?? '').toLowerCase();
+      if (!id.includes(needle) && !title.includes(needle)) return false;
+    }
+    if (vF !== 'all') {
+      const v = verdicts[String(opt(p.id)?.id)];
+      if (!v) return false;
+      if (vF === 'risk' ? v.risks === 0 : v.consistency !== vF) return false;
+    }
+    if ((from || to) && !inRange(Number(p.proposal_creation_timestamp_seconds), from, to)) return false;
+    return true;
+  });
   const last = opt(items[items.length - 1]?.id ?? [])?.id;
+  const oldest = Number(items[items.length - 1]?.proposal_creation_timestamp_seconds ?? 0n);
+
+  // date filter reaching beyond what's loaded → keep loading older pages
+  useEffect(() => {
+    if (!from || done || loading || !items.length) return;
+    if (oldest >= new Date(`${from}T00:00:00`).getTime() / 1000) load(last);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [from, oldest, done, loading]);
 
   return (
     <div className="space-y-4">
@@ -116,6 +163,29 @@ export function Proposals({ go }: { go: (h: string) => void }) {
         </div>
       </div>
 
+      <FilterBar active={active} onClear={clear}>
+        <SearchInput value={q} onChange={setQ} placeholder="Search # or title" />
+        <Select
+          value={st}
+          onChange={setSt}
+          label="Status"
+          options={[['all', 'Status: all'], ['Open', 'Open'], ['Adopted', 'Adopted'], ['Executed', 'Executed'], ['Rejected', 'Rejected'], ['Failed', 'Failed']] as const}
+        />
+        <Select value={typeF} onChange={setTypeF} options={typeOpts} label="Type" />
+        <Select
+          value={vF}
+          onChange={setVF}
+          label="AI check"
+          options={[['all', 'AI check: all'], ['match', 'Summary verified'], ['partial', 'Unconfirmed claims'], ['mismatch', 'Summary mismatch'], ['risk', 'Has risks']] as const}
+        />
+        <DateRange from={from} to={to} onFrom={setFrom} onTo={setTo} />
+      </FilterBar>
+      {active > 0 && (
+        <div className="-mt-2 px-1 text-xs text-muted">
+          {shown.length} of {items.length} loaded{!done && ' · older proposals load on demand'}
+        </div>
+      )}
+
       {error ? <ErrorBox error={error} onRetry={() => load(items.length ? last : undefined)} /> : null}
 
       <Card className="divide-y divide-line overflow-hidden">
@@ -129,7 +199,7 @@ export function Proposals({ go }: { go: (h: string) => void }) {
               <Skeleton className="h-1.5 w-full" />
             </div>
           ))}
-        {!loading && !shown.length && <div className="px-5 py-10 text-center text-sm text-muted">No proposals</div>}
+        {!loading && !shown.length && <div className="px-5 py-10 text-center text-sm text-muted">{active ? 'No proposals match these filters' : 'No proposals'}</div>}
       </Card>
 
       {!done && !loading && items.length > 0 && (
