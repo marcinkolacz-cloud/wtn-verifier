@@ -10,6 +10,7 @@ import { compact, date, hex, humanize, icp, opt, pct, relative, sha256, short, v
 import { useAsync } from '../lib/useAsync';
 import { Badge, Button, Card, CardHeader, CopyButton, Empty, ErrorBox, Ext, Mono, Skeleton, Spinner, VoteBar } from '../components/ui';
 import { proposalReport } from '../lib/report';
+import { Explain } from '../components/Explain';
 import { statusTone } from './Proposals';
 
 export function ProposalDetail({ id, go }: { id: bigint; go: (h: string) => void }) {
@@ -64,6 +65,7 @@ function Body({ p, fns }: { p: ProposalData; fns?: Map<bigint, Fn> }) {
       </div>
 
       <ActionPanel p={p} fns={fns} />
+      <Explain id={id} />
       <Voting p={p} />
 
       {prop?.summary && (

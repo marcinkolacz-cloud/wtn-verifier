@@ -2,3 +2,4 @@ node_modules
 dist
 .dfx
 .env
+.env.local

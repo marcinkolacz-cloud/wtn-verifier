@@ -30,3 +30,6 @@ export const waterNeuron = () => make<WaterNeuron>(wnIdl, IDS.waterNeuron);
 
 /** repo where .github/workflows/build-wtn.yml publishes builds/<commit>.json */
 export const BUILDS_REPO = 'marcinkolacz-cloud/wtn-verifier';
+
+/** Cloudflare Worker (worker/) that explains proposals with Workers AI; set VITE_EXPLAIN_URL in .env.local */
+export const EXPLAIN_URL: string | undefined = import.meta.env.VITE_EXPLAIN_URL;
